@@ -358,33 +358,59 @@ export class Supertonic3TTS {
         utterance.pitch = Math.max(0.5, Math.min(1.85, pitchRatio));
         utterance.rate = Math.max(0.65, Math.min(1.6, effectiveRate));
 
-        // Find best matching system voice
+        const setupVoiceAndSpeak = () => {
+          let voices = window.speechSynthesis.getVoices();
+          if (voices.length > 0) {
+            voices.sort((a, b) => {
+              if (a.localService === b.localService) return 0;
+              return a.localService ? 1 : -1;
+            });
+            const langPrefix = utterance.lang.split('-')[0];
+            const matchingVoice = voices.find(v => 
+              (v.lang.startsWith(utterance.lang) || v.lang.startsWith(langPrefix)) &&
+              (voiceConfig.gender === 'female' ? /female|woman|ellen|zoe|fleur|claire|google/i.test(v.name) : /male|man|ruben|bart|arthur|google/i.test(v.name))
+            ) || voices.find(v => v.lang.startsWith(utterance.lang) || v.lang.startsWith(langPrefix)) || voices[0];
+
+            if (matchingVoice) {
+              utterance.voice = matchingVoice;
+            }
+          }
+
+          let resolvedCalled = false;
+          const finish = () => {
+            if (resolvedCalled) return;
+            resolvedCalled = true;
+            this.activeUtterance = null;
+            resolve();
+          };
+
+          utterance.onend = finish;
+          utterance.onerror = finish;
+
+          // Safety timeout in case onend doesn't fire in some environments
+          const timeout = setTimeout(finish, Math.max(3000, text.length * 80));
+
+          try {
+            window.speechSynthesis.speak(utterance);
+          } catch (e) {
+            clearTimeout(timeout);
+            finish();
+          }
+        };
+
         const voices = window.speechSynthesis.getVoices();
-        // Prefer non-local (usually higher quality cloud-based/premium) voices if available
-        voices.sort((a, b) => {
-          if (a.localService === b.localService) return 0;
-          return a.localService ? 1 : -1; // Cloud services (localService=false) come first
-        });
-        const langPrefix = utterance.lang.split('-')[0];
-        const matchingVoice = voices.find(v => 
-          (v.lang.startsWith(utterance.lang) || v.lang.startsWith(langPrefix)) &&
-          (voiceConfig.gender === 'female' ? /female|woman|ellen|zoe|fleur|claire/i.test(v.name) : /male|man|ruben|bart|arthur/i.test(v.name))
-        ) || voices.find(v => v.lang.startsWith(utterance.lang) || v.lang.startsWith(langPrefix));
-
-        if (matchingVoice) {
-          utterance.voice = matchingVoice;
+        if (voices.length === 0) {
+          window.speechSynthesis.onvoiceschanged = () => {
+            window.speechSynthesis.onvoiceschanged = null;
+            setupVoiceAndSpeak();
+          };
+          // Fallback if onvoiceschanged doesn't fire within 250ms
+          setTimeout(() => {
+            setupVoiceAndSpeak();
+          }, 250);
+        } else {
+          setupVoiceAndSpeak();
         }
-
-        utterance.onend = () => {
-          this.activeUtterance = null;
-          resolve();
-        };
-        utterance.onerror = () => {
-          this.activeUtterance = null;
-          resolve();
-        };
-
-        window.speechSynthesis.speak(utterance);
       });
     }
   }
