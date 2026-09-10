@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#1e1f21" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <title>Eburon Translator - Standby</title>
+  <style>
+    :root{--bg-color:#1e1f21;--bar-border:rgba(255,255,255,.16);--btn-idle:#282d30;--btn-idle-hover:#33393e;--icon-muted:#8b929a;--blue-primary:#1f8aec;--blue-border:#a8b0b8}
+    *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none}
+    html,body{width:100%;height:100%;background:#121315}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;min-height:100dvh;display:flex;justify-content:center;align-items:center;color:#fff;overflow:hidden}
+    .app-viewport{width:100%;height:100dvh;background:var(--bg-color);display:flex;flex-direction:column;justify-content:space-between;position:relative;padding:max(env(safe-area-inset-top),20px) clamp(18px,4vw,28px) max(env(safe-area-inset-bottom),28px);overflow:hidden}
+    .top-bar{display:flex;justify-content:flex-end;align-items:center;width:100%;padding-top:8px}
+    .tune-btn{background:none;border:0;color:#fff;padding:8px;display:flex;align-items:center;justify-content:center;text-decoration:none}
+    .tune-btn:active{transform:scale(.92);opacity:.8}
+    .main-canvas{flex:1;display:flex;align-items:center;justify-content:center}
+    .bottom-section{width:100%;display:flex;justify-content:center;align-items:center;padding-bottom:clamp(12px,4vh,30px)}
+    .action-bar{display:flex;align-items:center;justify-content:center;gap:14px;width:100%}
+    .pill-container{display:flex;align-items:center;background:rgba(22,23,25,.6);border:1.5px solid var(--bar-border);border-radius:42px;padding:6px 8px;gap:8px}
+    .control-btn{width:clamp(62px,17vw,74px);height:clamp(62px,17vw,74px);max-width:74px;max-height:74px;border-radius:24px;border:0;background:var(--btn-idle);color:var(--icon-muted);display:flex;align-items:center;justify-content:center}
+    .control-btn:active{transform:scale(.94);background:var(--btn-idle-hover)}
+    .play-wrapper{width:82px;height:82px;display:flex;align-items:center;justify-content:center;border-radius:32px;border:1.5px solid var(--bar-border);background:rgba(22,23,25,.6);flex:0 0 auto}
+    .play-ring{width:68px;height:68px;border-radius:25px;border:3.5px solid var(--blue-border);display:flex;align-items:center;justify-content:center}
+    .play-btn-inner{width:58px;height:58px;border-radius:20px;background:var(--blue-primary);border:0;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(31,138,236,.35)}
+    .play-btn-inner:active{transform:scale(.92);filter:brightness(1.1)}
+    .icon-svg{width:28px;height:28px;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+    .play-triangle{width:26px;height:26px;stroke:#101c28;fill:none;stroke-width:3.2;stroke-linejoin:round;stroke-linecap:round;transform:translateX(2px)}
+    @media(min-width:768px){.app-viewport{max-width:none;height:100dvh;padding-left:clamp(32px,8vw,100px);padding-right:clamp(32px,8vw,100px)}.bottom-section{padding-bottom:clamp(24px,6vh,64px)}.control-btn{width:76px;height:76px}.play-wrapper{width:92px;height:92px}.play-ring{width:76px;height:76px}.play-btn-inner{width:64px;height:64px}}
+    @media(max-width:380px){.action-bar{gap:8px}.pill-container{gap:5px;padding:5px 6px}.control-btn{width:58px;height:58px;border-radius:20px}.play-wrapper{width:74px;height:74px;border-radius:27px}.play-ring{width:62px;height:62px}.play-btn-inner{width:52px;height:52px}}
+  </style>
+</head>
+<body>
+  <div class="app-viewport">
+    <header class="top-bar">
+      <a href="/settings.html" class="tune-btn" aria-label="Open Settings">
+        <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <line x1="4" y1="6" x2="16" y2="6" stroke-width="2.5"/><circle cx="16" cy="6" r="3" fill="#fff" stroke="#1e1f21" stroke-width="2"/>
+          <line x1="8" y1="12" x2="20" y2="12" stroke-width="2.5"/><circle cx="8" cy="12" r="3" fill="#fff" stroke="#1e1f21" stroke-width="2"/>
+          <line x1="4" y1="18" x2="14" y2="18" stroke-width="2.5"/><circle cx="14" cy="18" r="3" fill="#fff" stroke="#1e1f21" stroke-width="2"/>
+        </svg>
+      </a>
+    </header>
+    <main class="main-canvas"></main>
+    <footer class="bottom-section">
+      <div class="action-bar">
+        <div class="pill-container">
+          <button class="control-btn" id="micBtn" aria-label="Microphone">
+            <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1"/><line x1="12" y1="18" x2="12" y2="22"/></svg>
+          </button>
+          <button class="control-btn" id="speakerBtn" aria-label="Speaker Toggle">
+            <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
+          </button>
+          <button class="control-btn" id="resetBtn" aria-label="Reset Conversation">
+            <svg class="icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M21.5 2v6h-6"/><path d="M21.34 15.57a9 9 0 1 1-2.4-9.36L21.5 8"/></svg>
+          </button>
+        </div>
+        <div class="play-wrapper"><div class="play-ring">
+          <button class="play-btn-inner" id="playBtn" aria-label="Start Streaming"><svg class="play-triangle" viewBox="0 0 24 24"><polygon points="6 3 20 12 6 21 6 3"/></svg></button>
+        </div></div>
+      </div>
+    </footer>
+  </div>
+<script>
+const speakerBtn=document.getElementById('speakerBtn');
+let speakerActive=localStorage.getItem('eburonSpeaker')!=='off';
+const syncSpeaker=()=>speakerBtn.style.color=speakerActive?'#8b929a':'#555b62';
+syncSpeaker();
+speakerBtn.onclick=()=>{speakerActive=!speakerActive;localStorage.setItem('eburonSpeaker',speakerActive?'on':'off');syncSpeaker()};
+document.getElementById('resetBtn').onclick=()=>localStorage.removeItem('eburonHistory');
+document.getElementById('micBtn').onclick=()=>location.href='/translate.html';
+document.getElementById('playBtn').onclick=()=>location.href='/translate.html';
+if('serviceWorker' in navigator) addEventListener('load',()=>navigator.serviceWorker.register('/service-worker.js').catch(()=>{}));
+</script>
+</body></html>
