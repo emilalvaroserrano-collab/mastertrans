@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO="emilalvaroserrano-collab/mastertrans"
 BRANCH="main"
-VERSION="v0.1.0-r7"
+VERSION="v0.1.0-r7.1"
 PACKAGE="eburon-edge-termux-tablet-mvp-v0.1.0.zip"
 PACKAGE_SHA256="1a4b71f593f5025d47c3db1b515a7415649c73725a405993fef6a99cc6aae658"
 RAW_BASE="https://raw.githubusercontent.com/${REPO}/${BRANCH}/dist"
@@ -54,7 +54,7 @@ chmod +x "$PAYLOAD_INSTALL"
 blue "Applying realtime STT + translator LLM + TTS layer v7..."
 HOTFIX="$TMP_DIR/apply-hotfix.sh"
 curl -fLsS --retry 6 --retry-delay 2 --retry-all-errors \
-  "https://raw.githubusercontent.com/${REPO}/${BRANCH}/termux-hotfix-v7/apply.sh?cb=${VERSION}" -o "$HOTFIX"
+  "https://raw.githubusercontent.com/${REPO}/${HOTFIX_REF}/termux-hotfix-v7/apply.sh?cb=${VERSION}" -o "$HOTFIX"
 chmod +x "$HOTFIX"
 bash "$HOTFIX" "$TMP_DIR/payload/eburon-edge-termux"
 
