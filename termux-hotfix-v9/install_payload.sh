@@ -110,6 +110,17 @@ if pkg install -y nodejs-lts >/dev/null 2>&1 || pkg install -y nodejs >/dev/null
 JSON
   if (cd "$ROOT/kokoro-server" && npm install --silent --no-audit --no-fund) >"$ROOT/logs/kokoro-install.log" 2>&1; then
     echo '  ✓ Kokoro JS package installed'
+    if (cd "$ROOT/kokoro-server" && timeout 240 node --input-type=module <<'JS'
+import { KokoroTTS } from "kokoro-js";
+const tts=await KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-v1.0-ONNX",{dtype:"q8",device:"wasm"});
+await tts.generate("Eburon Kokoro offline cache verification.",{voice:"af_heart"});
+console.log("kokoro warmup ok");
+JS
+    ) >"$ROOT/logs/kokoro-warmup.log" 2>&1; then
+      echo '  ✓ Kokoro model cached for offline use'
+    else
+      warn '  ! Kokoro package installed but model warmup failed; provider will remain optional until it can initialize.'
+    fi
   else
     warn '  ! Kokoro JS package install failed; provider will stay optional.'
   fi
