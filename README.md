@@ -14,6 +14,8 @@ curl -fsSL https://raw.githubusercontent.com/emilalvaroserrano-collab/mastertran
 
 No repository clone and no manual model configuration are required.
 
+> **Termux Python 3.14 note:** the installer applies an Android compatibility layer that removes FastAPI/Pydantic from the local gateway and TTS sidecar. This avoids the `pydantic-core` / Rust target failure on ARM64 Android. Re-running the same curl command repairs a failed partial install.
+
 The bootstrap downloads the versioned Eburon Edge package, verifies its SHA-256 checksum, and launches the full installer.
 
 ## What gets installed
