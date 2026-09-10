@@ -8,7 +8,7 @@ from starlette.routing import Route
 ROOT=pathlib.Path(__file__).resolve().parents[1]
 CATALOG=ROOT/"models"/"piper"/"voices.json"
 VOICE_ROOT=ROOT/"models"/"piper"/"voices"
-PIPER_BIN=os.getenv("PIPER_BIN") or shutil.which("piper") or str(ROOT/"bin"/"piper")
+PIPER_BIN=os.getenv("PIPER_BIN") or shutil.which("piper") or (str(ROOT/"venv-gateway"/"bin"/"piper") if (ROOT/"venv-gateway"/"bin"/"piper").exists() else str(ROOT/"bin"/"piper"))
 
 def load_catalog():
     if not CATALOG.exists():
