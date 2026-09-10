@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 PAYLOAD="${1:?payload root required}"
-BASE="https://raw.githubusercontent.com/emilalvaroserrano-collab/mastertrans/c77e6b32249f99163bb360d64f5738c8f8c88d0a"
+BASE="https://raw.githubusercontent.com/emilalvaroserrano-collab/mastertrans/b6520a5179f951c21a41ad012537b03cca5a5343"
 echo "[compat-v8] Applying reviewed realtime voice pipeline"
 
 get(){ curl -fLsS --retry 6 --retry-delay 2 --retry-all-errors "$1" -o "$2"; }
