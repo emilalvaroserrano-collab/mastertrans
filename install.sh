@@ -3,6 +3,7 @@ set -euo pipefail
 
 REPO="emilalvaroserrano-collab/mastertrans"
 BRANCH="main"
+HOTFIX_REF="9e5f802b5f5b9aabe7d66ae3c90be4b73fabe305"
 VERSION="v0.1.0-r4"
 PACKAGE="eburon-edge-termux-tablet-mvp-v0.1.0.zip"
 PACKAGE_SHA256="1a4b71f593f5025d47c3db1b515a7415649c73725a405993fef6a99cc6aae658"
@@ -30,14 +31,14 @@ esac
 blue "Eburon Edge ${VERSION} — one-command installer"
 blue "Internet is required only for this initial installation."
 
-pkg update -y
-pkg install -y curl unzip coreutils
+pkg update -y >/dev/null
+pkg install -y curl unzip coreutils >/dev/null
 
 blue "Downloading Eburon Edge package..."
 : > "$TMP_DIR/package.b64"
 for part in 00 01 02 03 04 05; do
   curl -fLsS --retry 6 --retry-delay 2 --retry-all-errors \
-    "${RAW_BASE}/${PACKAGE}.b64.${part}" \
+    "${RAW_BASE}/${PACKAGE}.b64.${part}?ref=${HOTFIX_REF}" \
     >> "$TMP_DIR/package.b64"
 done
 
@@ -53,8 +54,8 @@ chmod +x "$PAYLOAD_INSTALL"
 
 blue "Applying production Termux compatibility layer v4..."
 HOTFIX="$TMP_DIR/apply-hotfix.sh"
-curl -fsSL --retry 6 --retry-delay 2 --retry-all-errors \
-  "https://raw.githubusercontent.com/${REPO}/${BRANCH}/termux-hotfix-v4/apply.sh" -o "$HOTFIX"
+curl -fLsS --retry 6 --retry-delay 2 --retry-all-errors \
+  "https://raw.githubusercontent.com/${REPO}/${HOTFIX_REF}/termux-hotfix-v4/apply.sh?cb=${HOTFIX_REF}" -o "$HOTFIX"
 chmod +x "$HOTFIX"
 bash "$HOTFIX" "$TMP_DIR/payload/eburon-edge-termux"
 
