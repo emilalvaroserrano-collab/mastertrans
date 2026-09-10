@@ -85,7 +85,7 @@ async def live(ws:WebSocket):
                 translation=await translate_text(transcript,source,target,cfg.get("mode","general"))
                 await ws.send_json({"type":"translation_final","text":translation,"source_language":source,"target_language":target})
                 if cfg.get("speaker",True):
-                    tts_lang=base_lang(target)
+                    tts_lang=base_lang(target); tts_lang=tts_lang if tts_lang in ST3_LANGS else "na"
                     tr=await client.post(f"{TTS_URL}/v1/tts",json={"text":translation,"voice":cfg.get("voice","M1"),"lang":tts_lang,"steps":int(os.getenv("TTS_STEPS","6")),"speed":float(os.getenv("TTS_SPEED","1.05"))})
                     tr.raise_for_status()
                     await ws.send_json({"type":"tts_begin","mime":"audio/wav","bytes":len(tr.content)})
