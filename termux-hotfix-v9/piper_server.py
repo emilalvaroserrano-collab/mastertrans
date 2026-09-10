@@ -76,12 +76,24 @@ async def synthesize(request:Request):
         return JSONResponse({"error":"Piper runtime is not installed on this tablet"},status_code=503)
     try:
         with tempfile.TemporaryDirectory(prefix="eburon-piper-") as td:
-            out=pathlib.Path(td)/"out.wav"
-            proc=subprocess.run([PIPER_BIN,"--model",str(model),"--config",str(cfg),"--output_file",str(out)],
-                input=text.encode("utf-8"),stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=60)
-            if proc.returncode!=0:
-                return JSONResponse({"error":proc.stderr.decode("utf-8","ignore")[-500:]},status_code=500)
-            return Response(out.read_bytes(),media_type="audio/wav")
+            raw=pathlib.Path(td)/"out.raw"
+            wav=pathlib.Path(td)/"out.wav"
+            try:
+                cfg_data=json.loads(cfg.read_text(encoding="utf-8"))
+                sample_rate=int((cfg_data.get("audio") or {}).get("sample_rate") or 22050)
+            except Exception:
+                sample_rate=22050
+            env=os.environ.copy()
+            env["PIPER_VOICE_PATH"]=str(model.parent)
+            proc=subprocess.run([PIPER_BIN,"-m",model.stem,"-f",str(raw),"--",text],
+                stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=60,env=env,cwd=str(model.parent))
+            if proc.returncode!=0 or not raw.is_file():
+                return JSONResponse({"error":proc.stderr.decode("utf-8","ignore")[-500:] or "Piper produced no audio"},status_code=500)
+            ff=subprocess.run(["ffmpeg","-loglevel","error","-y","-f","f32le","-ar",str(sample_rate),"-ac","1","-i",str(raw),str(wav)],
+                stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30)
+            if ff.returncode!=0 or not wav.is_file():
+                return JSONResponse({"error":ff.stderr.decode("utf-8","ignore")[-500:] or "ffmpeg conversion failed"},status_code=500)
+            return Response(wav.read_bytes(),media_type="audio/wav")
     except Exception as e:
         return JSONResponse({"error":str(e)},status_code=500)
 
