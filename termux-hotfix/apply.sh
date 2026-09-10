@@ -32,12 +32,17 @@ PYORT
 rm -rf "$ROOT/venv-tts"
 python -m venv --system-site-packages "$ROOT/venv-tts"
 "$ROOT/venv-tts/bin/pip" install -U pip wheel setuptools
-"$ROOT/venv-tts/bin/pip" install 'huggingface-hub>=0.25' 'soundfile>=0.12' 'starlette>=0.46,<2' 'uvicorn>=0.30,<1'
+"$ROOT/venv-tts/bin/pip" install 'soundfile>=0.12' 'starlette>=0.46,<2' 'uvicorn>=0.30,<1'
 "$ROOT/venv-tts/bin/pip" install --no-deps 'git+https://github.com/supertone-oss-archive/supertonic-py.git@df0f9686dac7fbbde391b759e2ee5286a3737622'
-mkdir -p "$ROOT/models/supertonic-3" "$ROOT/logs"
-"$ROOT/venv-tts/bin/hf" download supertone-oss-archive/supertonic-3 \
-  --revision aafc6e32416a594460b32413efc49d7fe4ce6d46 \
-  --local-dir "$ROOT/models/supertonic-3"
+mkdir -p "$ROOT/models/supertonic-3/onnx" "$ROOT/models/supertonic-3/voice_styles" "$ROOT/logs"
+
+HF_BASE="https://huggingface.co/Supertone/supertonic-3/resolve/724fb5abbf5502583fb520898d45929e62f02c0b"
+for f in duration_predictor.onnx text_encoder.onnx vector_estimator.onnx vocoder.onnx tts.json unicode_indexer.json; do
+  curl -fL --retry 6 --retry-delay 2 --retry-all-errors "$HF_BASE/onnx/$f?download=true" -o "$ROOT/models/supertonic-3/onnx/$f"
+done
+for v in F1 F2 F3 F4 F5 M1 M2 M3 M4 M5; do
+  curl -fL --retry 6 --retry-delay 2 --retry-all-errors "$HF_BASE/voice_styles/$v.json?download=true" -o "$ROOT/models/supertonic-3/voice_styles/$v.json"
+done
 SUPERTONIC_MODEL_DIR="$ROOT/models/supertonic-3" "$ROOT/venv-tts/bin/python" - <<'PYTTS'
 import os, soundfile as sf, onnxruntime as ort
 from supertonic import TTS
