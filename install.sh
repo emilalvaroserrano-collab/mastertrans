@@ -51,10 +51,10 @@ PAYLOAD_INSTALL="$TMP_DIR/payload/eburon-edge-termux/install.sh"
 [ -f "$PAYLOAD_INSTALL" ] || { red "Installer payload is missing."; exit 2; }
 chmod +x "$PAYLOAD_INSTALL"
 
-blue "Applying Android/Python compatibility hotfix..."
+blue "Applying Android/Python compatibility hotfix v3..."
 HOTFIX="$TMP_DIR/apply-hotfix.sh"
 curl -fsSL --retry 6 --retry-delay 2 --retry-all-errors \
-  "https://raw.githubusercontent.com/${REPO}/${BRANCH}/termux-hotfix/apply.sh" -o "$HOTFIX"
+  "https://raw.githubusercontent.com/${REPO}/${BRANCH}/termux-hotfix-v3/apply.sh" -o "$HOTFIX"
 chmod +x "$HOTFIX"
 bash "$HOTFIX" "$TMP_DIR/payload/eburon-edge-termux"
 
