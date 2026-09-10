@@ -6,6 +6,10 @@ The target experience is appliance-like: install once while online, verify every
 
 ## One-command install
 
+> **Installer v4:** repair-safe and idempotent. Existing Eburon services are stopped before native binaries are replaced, already-built llama.cpp/whisper.cpp binaries and downloaded models are reused, readiness polling is silent, and a service that crashes prints only its own concise log tail instead of flooding Termux with repeated curl errors.
+
+
+
 Install **Termux**, open it once, then paste this single command:
 
 ```bash
