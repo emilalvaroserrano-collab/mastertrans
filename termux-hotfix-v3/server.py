@@ -1,5 +1,6 @@
 from __future__ import annotations
 import asyncio, io, json, mimetypes, os, pathlib, time, wave
+from contextlib import asynccontextmanager
 from typing import Any
 import httpx
 from starlette.applications import Starlette
@@ -24,12 +25,15 @@ client: httpx.AsyncClient|None=None
 def load_prompt(name:str)->str:
     return (PROMPTS/name).read_text(encoding="utf-8").strip()
 
-async def startup():
+@asynccontextmanager
+async def lifespan(app):
     global client
     client=httpx.AsyncClient(timeout=httpx.Timeout(120.0,connect=5.0))
-
-async def shutdown():
-    if client: await client.aclose()
+    try:
+        yield
+    finally:
+        if client:
+            await client.aclose()
 
 async def probe(url:str)->bool:
     if MOCK: return True
@@ -192,4 +196,4 @@ app=Starlette(routes=[
     Route("/v1/audio/speech",speech,methods=["POST"]),
     WebSocketRoute("/ws/live",live),
     Route("/{path:path}",static),
-],on_startup=[startup],on_shutdown=[shutdown])
+],lifespan=lifespan)
