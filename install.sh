@@ -51,6 +51,13 @@ PAYLOAD_INSTALL="$TMP_DIR/payload/eburon-edge-termux/install.sh"
 [ -f "$PAYLOAD_INSTALL" ] || { red "Installer payload is missing."; exit 2; }
 chmod +x "$PAYLOAD_INSTALL"
 
+blue "Applying Android/Python compatibility hotfix..."
+HOTFIX="$TMP_DIR/apply-hotfix.sh"
+curl -fsSL --retry 6 --retry-delay 2 --retry-all-errors \
+  "https://raw.githubusercontent.com/${REPO}/${BRANCH}/termux-hotfix/apply.sh" -o "$HOTFIX"
+chmod +x "$HOTFIX"
+bash "$HOTFIX" "$TMP_DIR/payload/eburon-edge-termux"
+
 blue "Starting full offline stack installation..."
 EBURON_ROOT="${EBURON_ROOT:-$HOME/.eburon-edge}" bash "$PAYLOAD_INSTALL"
 
