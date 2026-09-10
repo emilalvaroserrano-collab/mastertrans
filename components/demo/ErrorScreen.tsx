@@ -28,17 +28,9 @@ export default function ErrorScreen() {
     };
   }, [client]);
 
-  const quotaErrorMessage =
-    'Gemini Live API in AI Studio has a limited free quota each day. Come back tomorrow to continue.';
-
-  let errorMessage = 'Something went wrong. Please try again.';
+  let errorMessage = 'Could not connect to the local translator. Please ensure microphone access is granted and Ollama is accessible.';
   let rawMessage: string | null = error?.message || null;
   let tryAgainOption = true;
-  if (error?.message?.includes('RESOURCE_EXHAUSTED') || error?.message?.toLowerCase().includes('quota')) {
-    errorMessage = quotaErrorMessage;
-    rawMessage = error?.message?.toLowerCase().includes('quota') ? error.message : null;
-    tryAgainOption = false;
-  }
 
   if (!error) {
     return <div style={{ display: 'none' }} />;

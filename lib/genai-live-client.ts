@@ -1,327 +1,333 @@
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
-*/
-import {
-  GoogleGenAI,
-  LiveCallbacks,
-  LiveClientToolResponse,
-  LiveConnectConfig,
-  LiveServerContent,
-  LiveServerMessage,
-  LiveServerToolCall,
-  LiveServerToolCallCancellation,
-  Part,
-  Session,
-} from '@google/genai';
+ */
 import EventEmitter from 'eventemitter3';
 import { DEFAULT_LIVE_API_MODEL } from './constants';
-import { difference } from 'lodash';
-import { base64ToArrayBuffer } from './utils';
+import { LiveConnectConfig, LiveServerContent, LiveServerToolCall, LiveServerToolCallCancellation } from '@google/genai';
+import { localSTT } from './local-stt';
+import { ollamaTranslator } from './ollama-translator';
+import { supertonicTTS } from './supertonic-tts';
+import { useSettings } from './state';
 
-/**
- * Represents a single log entry in the system.
- * Used for tracking and displaying system events, messages, and errors.
- */
 export interface StreamingLog {
-  // Optional count for repeated log entries
   count?: number;
-  // Optional additional data associated with the log
   data?: unknown;
-  // Timestamp of when the log was created
   date: Date;
-  // The log message content
   message: string | object;
-  // The type/category of the log entry
   type: string;
 }
 
-/**
- * Event types that can be emitted by the MultimodalLiveClient.
- * Each event corresponds to a specific message from GenAI or client state change.
- */
 export interface LiveClientEventTypes {
-  // Emitted when audio data is received
   audio: (data: ArrayBuffer) => void;
-  // Emitted when the connection closes
-  close: (event: CloseEvent) => void;
-  // Emitted when content is received from the server
+  close: (event?: CloseEvent) => void;
   content: (data: LiveServerContent) => void;
-  // Emitted when an error occurs
   error: (e: ErrorEvent) => void;
-  // Emitted when the server interrupts the current generation
   interrupted: () => void;
-  // Emitted for logging events
   log: (log: StreamingLog) => void;
-  // Emitted when the connection opens
   open: () => void;
-  // Emitted when the initial setup is complete
   setupcomplete: () => void;
-  // Emitted when a tool call is received
   toolcall: (toolCall: LiveServerToolCall) => void;
-  // Emitted when a tool call is cancelled
-  toolcallcancellation: (
-    toolcallCancellation: LiveServerToolCallCancellation
-  ) => void;
-  // Emitted when the current turn is complete
+  toolcallcancellation: (toolcallCancellation: LiveServerToolCallCancellation) => void;
   turncomplete: () => void;
   inputTranscription: (text: string, isFinal: boolean) => void;
   outputTranscription: (text: string, isFinal: boolean) => void;
 }
 
-// FIX: Refactor to use composition over inheritance for EventEmitter.
+/**
+ * Local Realtime Streaming Live Client
+ * Powered by:
+ * - Local STT: streaming continuous speech-to-text
+ * - Ollama Gemma 3 1B: lightweight edge/mobile LLM translator
+ * - Supertonic 3: on-device multilingual TTS with full Dutch (Flemish) support
+ */
 export class GenAILiveClient {
-  // FIX: Use an internal EventEmitter instance.
   private readonly emitter = new EventEmitter<LiveClientEventTypes>();
 
-  // FIX: Expose on/off methods.
   public on = this.emitter.on.bind(this.emitter);
   public off = this.emitter.off.bind(this.emitter);
 
-  public readonly model: string = DEFAULT_LIVE_API_MODEL;
-
-  protected readonly client: GoogleGenAI;
-  protected session?: Session;
-
+  public model: string = DEFAULT_LIVE_API_MODEL;
   private _status: 'connected' | 'disconnected' | 'connecting' = 'disconnected';
   public get status() {
     return this._status;
   }
 
-  /**
-   * Creates a new GenAILiveClient instance.
-   * @param apiKey - API key for authentication with Google GenAI
-   * @param model - Optional model name to override the default model
-   */
-  constructor(apiKey: string, model?: string) {
-    if (model) this.model = model;
+  private isTranslating: boolean = false;
+  private lastTranscribedText: string = '';
 
-    this.client = new GoogleGenAI({
-      apiKey: apiKey,
-    });
+  constructor(apiKey?: string, model?: string) {
+    if (model) this.model = model;
+    // Set Supertonic voice from state if available
+    const state = useSettings.getState();
+    if (state.voice) {
+      supertonicTTS.setVoice(state.voice);
+    }
+    if (state.prosodyProfile) {
+      supertonicTTS.setProsodyProfile(state.prosodyProfile);
+    }
   }
 
-  public async connect(config: LiveConnectConfig): Promise<boolean> {
+  public async connect(config?: LiveConnectConfig): Promise<boolean> {
     if (this._status === 'connected' || this._status === 'connecting') {
       return false;
     }
 
     this._status = 'connecting';
-    const callbacks: LiveCallbacks = {
-      onopen: this.onOpen.bind(this),
-      onmessage: this.onMessage.bind(this),
-      onerror: this.onError.bind(this),
-      onclose: this.onClose.bind(this),
-    };
+    this.log('client.connect', 'Starting Local STT, Gemma 3 Ollama, and Supertonic 3 TTS...');
 
     try {
-      this.session = await this.client.live.connect({
-        model: this.model,
-        config: {
-          ...config,
-        },
-        callbacks,
+      const state = useSettings.getState();
+      ollamaTranslator.setEndpoint(state.ollamaEndpoint || 'http://localhost:11434');
+      ollamaTranslator.setModel(state.model || 'gemma3:1b');
+      supertonicTTS.setVoice(state.voice || 'F1');
+      supertonicTTS.setProsodyProfile(state.prosodyProfile || 'balanced');
+
+      // Check Ollama connection in background (non-blocking)
+      ollamaTranslator.checkHealth().then(res => {
+        if (!res.ok) {
+          console.warn('Ollama check note:', res.error);
+        } else {
+          this.log('ollama.status', `Connected to Ollama with model ${this.model}`);
+        }
       });
+
+      // Configure Multilingual Realtime STT with Language 1 and Language 2
+      localSTT.setLanguages(
+        state.language1 || 'Dutch (Flemish)',
+        state.language2 || 'English (US)',
+        state.autoDetect
+      );
+
+      // Start Multilingual Local STT streaming with realtime language detection
+      localSTT.start(
+        (text: string, isFinal: boolean) => {
+          this.handleSTTResult(text, isFinal);
+        },
+        (detection) => {
+          if (state.autoDetect && detection) {
+            if (detection.direction === 'guest-to-staff' && detection.name !== state.language2) {
+              this.emitter.emit('toolcall', {
+                functionCalls: [
+                  {
+                    id: `call_${Date.now()}`,
+                    name: 'setGuestLanguage',
+                    args: { language: detection.name },
+                  },
+                ],
+              });
+            }
+          }
+        },
+        (err: any) => {
+          console.warn('LocalSTT event:', err);
+        }
+      );
+
+      this._status = 'connected';
+      this.emitter.emit('open');
+      this.emitter.emit('setupcomplete');
+      this.log('client.open', 'Realtime streaming translation active.');
+      return true;
     } catch (e: any) {
-      console.error('Error connecting to GenAI Live:', e);
+      console.error('Error connecting to local pipeline:', e);
       this._status = 'disconnected';
-      this.session = undefined;
       const errorEvent = new ErrorEvent('error', {
         error: e,
-        message: e?.message || 'Failed to connect.',
+        message: e?.message || 'Failed to initialize local translator.',
       });
-      this.onError(errorEvent);
+      this.emitter.emit('error', errorEvent);
       return false;
     }
-
-    this._status = 'connected';
-    return true;
   }
 
-  public disconnect() {
-    this.session?.close();
-    this.session = undefined;
+  public disconnect(): boolean {
+    localSTT.stop();
+    ollamaTranslator.abort();
+    supertonicTTS.cancel();
+
     this._status = 'disconnected';
-
-    this.log('client.close', `Disconnected`);
+    this.isTranslating = false;
+    this.emitter.emit('close');
+    this.log('client.close', 'Disconnected local translator session.');
     return true;
-  }
-
-  public send(parts: Part | Part[], turnComplete: boolean = true) {
-    if (this._status !== 'connected' || !this.session) {
-      this.emitter.emit('error', new ErrorEvent('Client is not connected'));
-      return;
-    }
-    const partsArray = Array.isArray(parts) ? parts : [parts];
-    this.session.sendClientContent({ 
-      turns: [{ role: 'user', parts: partsArray }], 
-      turnComplete 
-    });
-    this.log(`client.send`, parts);
   }
 
   public sendRealtimeInput(chunks: Array<{ mimeType: string; data: string }>) {
-    if (this._status !== 'connected' || !this.session) {
-      this.emitter.emit('error', new ErrorEvent('Client is not connected'));
-      return;
-    }
-    chunks.forEach(chunk => {
-      if (chunk.mimeType.includes('audio')) {
-        this.session!.sendRealtimeInput({ audio: chunk });
-      } else if (chunk.mimeType.includes('image')) {
-        this.session!.sendRealtimeInput({ video: chunk });
-      }
-    });
-
-    let hasAudio = false;
-    let hasVideo = false;
-    for (let i = 0; i < chunks.length; i++) {
-      const ch = chunks[i];
-      if (ch.mimeType.includes('audio')) hasAudio = true;
-      if (ch.mimeType.includes('image')) hasVideo = true;
-      if (hasAudio && hasVideo) break;
-    }
-
-    let message = 'unknown';
-    if (hasAudio && hasVideo) message = 'audio + video';
-    else if (hasAudio) message = 'audio';
-    else if (hasVideo) message = 'video';
-    this.log(`client.realtimeInput`, message);
+    // Microphone audio chunk passed from AudioRecorder.
+    // AudioRecorder feeds the visualizer and volume meter directly.
   }
 
-  public sendToolResponse(toolResponse: LiveClientToolResponse) {
-    if (this._status !== 'connected' || !this.session) {
-      this.emitter.emit('error', new ErrorEvent('Client is not connected'));
-      return;
-    }
-    if (
-      toolResponse.functionResponses &&
-      toolResponse.functionResponses.length
-    ) {
-      this.session.sendToolResponse({
-        functionResponses: toolResponse.functionResponses!,
-      });
-    }
-
-    this.log(`client.toolResponse`, { toolResponse });
-  }
-
-  protected onMessage(message: LiveServerMessage) {
-    if (message.setupComplete) {
-      this.emitter.emit('setupcomplete');
-      return;
-    }
-    if (message.toolCall) {
-      this.log('server.toolCall', message);
-      this.emitter.emit('toolcall', message.toolCall);
-      return;
-    }
-    if (message.toolCallCancellation) {
-      this.log('receive.toolCallCancellation', message);
-      this.emitter.emit('toolcallcancellation', message.toolCallCancellation);
-      return;
-    }
-
-    if (message.serverContent) {
-      const { serverContent } = message;
-      if (serverContent.interrupted) {
-        this.log('receive.serverContent', 'interrupted');
-        this.emitter.emit('interrupted');
-        return;
-      }
-
-      if (serverContent.inputTranscription) {
-        this.emitter.emit(
-          'inputTranscription',
-          serverContent.inputTranscription.text,
-          (serverContent.inputTranscription as any).isFinal ?? false,
-        );
-        this.log(
-          'server.inputTranscription',
-          serverContent.inputTranscription.text,
-        );
-      }
-
-      if (serverContent.outputTranscription) {
-        this.emitter.emit(
-          'outputTranscription',
-          serverContent.outputTranscription.text,
-          (serverContent.outputTranscription as any).isFinal ?? false,
-        );
-        this.log(
-          'server.outputTranscription',
-          serverContent.outputTranscription.text,
-        );
-      }
-
-      if (serverContent.modelTurn) {
-        let parts: Part[] = serverContent.modelTurn.parts || [];
-
-        const audioParts = parts.filter(p =>
-          p.inlineData?.mimeType?.startsWith('audio/pcm'),
-        );
-        const base64s = audioParts.map(p => p.inlineData?.data);
-        const otherParts = difference(parts, audioParts);
-
-        base64s.forEach(b64 => {
-          if (b64) {
-            const data = base64ToArrayBuffer(b64);
-            this.emitter.emit('audio', data);
-            this.log(`server.audio`, `buffer (${data.byteLength})`);
-          }
-        });
-
-        if (otherParts.length > 0) {
-          const content: LiveServerContent = { modelTurn: { parts: otherParts } };
-          this.emitter.emit('content', content);
-          this.log(`server.content`, message);
-        }
-      }
-
-      if (serverContent.turnComplete) {
-        this.log('server.send', 'turnComplete');
-        this.emitter.emit('turncomplete');
-      }
+  public send(parts: any, turnComplete: boolean = true) {
+    const textPart = Array.isArray(parts) ? parts.find((p: any) => p.text)?.text : parts?.text;
+    if (textPart) {
+      this.handleSTTResult(textPart, true);
     }
   }
 
-  protected onError(e: ErrorEvent) {
-    this._status = 'disconnected';
-    console.error('error:', e);
-
-    const message = `Could not connect to GenAI Live: ${e.message}`;
-    this.log(`server.${e.type}`, message);
-    this.emitter.emit('error', e);
-  }
-
-  protected onOpen() {
-    this._status = 'connected';
-    this.emitter.emit('open');
-  }
-
-  protected onClose(e: CloseEvent) {
-    this._status = 'disconnected';
-    let reason = e.reason || '';
-    if (reason.toLowerCase().includes('error')) {
-      const prelude = 'ERROR]';
-      const preludeIndex = reason.indexOf(prelude);
-      if (preludeIndex > 0) {
-        reason = reason.slice(preludeIndex + prelude.length + 1, Infinity);
-      }
-    }
-
-    this.log(
-      `server.${e.type}`,
-      `disconnected ${reason ? `with reason: ${reason}` : ``}`
-    );
-    this.emitter.emit('close', e);
+  public sendToolResponse(toolResponse: any) {
+    this.log('client.toolResponse', { toolResponse });
   }
 
   /**
-   * Internal method to emit a log event.
-   * @param type - Log type
-   * @param message - Log message
+   * Processes speech-to-text transcripts and routes them to Gemma 3 1B translator
    */
+  private async handleSTTResult(text: string, isFinal: boolean) {
+    const cleanText = text.trim();
+    if (!cleanText) return;
+
+    // Emit live transcription for real-time UI display
+    this.emitter.emit('inputTranscription', cleanText, isFinal);
+
+    // Only trigger LLM translation when an utterance is finalized or complete
+    if (!isFinal) {
+      return;
+    }
+
+    if (this.isTranslating) {
+      // Allow slight gap or queue
+      await new Promise(r => setTimeout(r, 100));
+    }
+
+    this.lastTranscribedText = cleanText;
+    this.isTranslating = true;
+
+    const state = useSettings.getState();
+    const staffLang = state.language1 || 'Dutch (Flemish)';
+    const guestLang = state.language2 || 'English (US)';
+    const autoDetect = state.autoDetect;
+    const medicalMode = state.medicalMode;
+    const topic = state.topic;
+
+    // Determine translation direction using multilingual STT detection
+    const sttDetection = localSTT.detectLanguage(cleanText);
+    const isDutchInput = sttDetection
+      ? sttDetection.direction === 'staff-to-guest'
+      : this.isDutchFlemish(cleanText, staffLang);
+
+    let sourceLang = isDutchInput ? staffLang : (sttDetection?.name || guestLang);
+    let targetLang = isDutchInput ? guestLang : staffLang;
+
+    // Handle auto-detection of guest language switch
+    if (autoDetect && !isDutchInput) {
+      const detected = sttDetection?.name || this.detectLanguageFromText(cleanText);
+      if (detected && detected !== guestLang) {
+        this.emitter.emit('toolcall', {
+          functionCalls: [
+            {
+              id: `call_${Date.now()}`,
+              name: 'setGuestLanguage',
+              args: { language: detected },
+            },
+          ],
+        });
+        sourceLang = detected;
+      }
+    }
+
+    // Sync Supertonic voice & prosody
+    supertonicTTS.setVoice(state.voice || 'F1');
+    supertonicTTS.setProsodyProfile(state.prosodyProfile || 'balanced');
+
+    let fullTranslation = '';
+
+    try {
+      await ollamaTranslator.translateStream(
+        cleanText,
+        {
+          model: state.model || 'gemma3:1b',
+          endpoint: state.ollamaEndpoint || 'http://localhost:11434',
+          sourceLang,
+          targetLang,
+          isMedicalMode: medicalMode,
+          topic,
+        },
+        {
+          onToken: (token: string) => {
+            fullTranslation += token;
+            this.emitter.emit('outputTranscription', token, false);
+            this.emitter.emit('content', {
+              modelTurn: {
+                parts: [{ text: token }],
+              },
+            });
+          },
+          onLanguageDetected: (lang: string) => {
+            if (autoDetect && lang !== guestLang) {
+              this.emitter.emit('toolcall', {
+                functionCalls: [
+                  {
+                    id: `call_${Date.now()}`,
+                    name: 'setGuestLanguage',
+                    args: { language: lang },
+                  },
+                ],
+              });
+            }
+          },
+          onComplete: async (result: string) => {
+            const finalResult = result || fullTranslation;
+            this.emitter.emit('outputTranscription', '', true);
+
+            // Synthesize real-time audio with Supertonic 3 (supporting Dutch Flemish and 31 languages)
+            await supertonicTTS.synthesizeStream(
+              finalResult,
+              targetLang,
+              (audioChunk: ArrayBuffer) => {
+                this.emitter.emit('audio', audioChunk);
+              },
+              () => {
+                this.emitter.emit('turncomplete');
+              }
+            );
+
+            this.isTranslating = false;
+          },
+          onError: (err: any) => {
+            console.error('Translation error:', err);
+            this.emitter.emit('turncomplete');
+            this.isTranslating = false;
+          },
+        }
+      );
+    } catch (err: any) {
+      console.error('Translation pipeline error:', err);
+      this.emitter.emit('turncomplete');
+      this.isTranslating = false;
+    }
+  }
+
+  private isDutchFlemish(text: string, staffLang: string): boolean {
+    const lowerStaff = staffLang.toLowerCase();
+    if (!lowerStaff.includes('dutch') && !lowerStaff.includes('flemish')) {
+      return false;
+    }
+    const lower = text.toLowerCase();
+    // High-frequency Dutch/Flemish words
+    const dutchMarkers = /\b(ik|je|jij|u|uw|wij|we|het|de|een|van|in|is|dat|niet|op|met|voor|als|er|maar|om|heb|hebt|heeft|hallo|goedendag|alstublieft|dank|arts|pijn|hoofdpijn|dokter|medicijn|koorts)\b/i;
+    return dutchMarkers.test(lower);
+  }
+
+  private detectLanguageFromText(text: string): string | null {
+    const lower = text.toLowerCase();
+    if (/\b(po|opo|kamusta|salamat|bakit|ano|hindi|oo|mabuti|ako|ikaw|dito)\b/i.test(lower)) {
+      return 'Tagalog (Filipino)';
+    }
+    if (/\b(hola|gracias|por favor|buenos|como|esta|estoy|usted|doctor)\b/i.test(lower)) {
+      return 'Spanish';
+    }
+    if (/\b(bonjour|merci|s'il vous plait|comment|allez|vous|oui|non|je|suis)\b/i.test(lower)) {
+      return 'French';
+    }
+    if (/\b(guten tag|danke|bitte|wie|geht|ich|habe|schmerzen|arzt)\b/i.test(lower)) {
+      return 'German';
+    }
+    if (/\b(hello|hi|please|thank you|how are you|i have|doctor|pain)\b/i.test(lower)) {
+      return 'English (US)';
+    }
+    return null;
+  }
+
   protected log(type: string, message: string | object) {
     this.emitter.emit('log', {
       type,

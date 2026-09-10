@@ -1,8 +1,10 @@
 {
   "name": "Remix Eburon AI Translator 2",
-  "description": "Real-time dual translation powered by Eburon AI",
+  "description": "Real-time dual translation powered by Eburon AI with Local STT, Gemma 3 Ollama, and Supertonic 3 TTS",
   "requestFramePermissions": [
     "microphone"
   ],
-  "majorCapabilities": []
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

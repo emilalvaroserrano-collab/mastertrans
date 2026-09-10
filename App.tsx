@@ -29,12 +29,7 @@ import { LiveAPIProvider } from './contexts/LiveAPIContext';
 import { useAuth, updateUserSettings } from './lib/auth';
 import { useSettings } from './lib/state';
 
-const API_KEY = process.env.GEMINI_API_KEY;
-if (typeof API_KEY !== 'string') {
-  throw new Error(
-    'Missing required environment variable: GEMINI_API_KEY'
-  );
-}
+const API_KEY = process.env.GEMINI_API_KEY || 'local-translator-mode';
 
 /**
  * Main application component that provides a streaming interface for Live API.

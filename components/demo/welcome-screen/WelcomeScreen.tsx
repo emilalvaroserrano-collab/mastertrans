@@ -27,6 +27,21 @@ const WelcomeScreen: React.FC = () => {
     return (
       <div className="welcome-screen">
         <div className="welcome-content empty">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-xs font-medium">
+            <span>{language1}</span>
+            <span className="text-gray-400">⇄</span>
+            <span>{language2}</span>
+          </div>
+          <div className="text-center">
+            <h2 className="text-xl font-semibold text-white mb-1">Eburon AI Local Translator</h2>
+            <p className="text-sm text-gray-400 max-w-sm">
+              Real-time streaming translation powered by Local STT, Gemma 3 (Ollama), and Supertonic 3 (Dutch Flemish).
+            </p>
+          </div>
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>Ready for speech streaming</span>
+          </div>
         </div>
       </div>
     );

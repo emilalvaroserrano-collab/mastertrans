@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
 */
 import { create } from 'zustand';
-import { DEFAULT_LIVE_API_MODEL, DEFAULT_VOICE, AVAILABLE_LANGUAGES } from './constants';
+import { DEFAULT_LIVE_API_MODEL, DEFAULT_VOICE, DEFAULT_PROSODY_PROFILE, AVAILABLE_LANGUAGES } from './constants';
 import { MEDICAL_TERMS } from './constants/medical-terms';
 import {
   FunctionDeclaration,
@@ -127,10 +127,12 @@ const setStoredValue = (key: string, value: any) => {
 
 const initialLanguage1 = getStoredValue('eburon_lang1', 'Dutch (Flemish)');
 const initialLanguage2 = getStoredValue('eburon_lang2', 'English (US)');
-const initialVoice = getStoredValue('eburon_voice', 'Orus');
+const initialVoice = getStoredValue('eburon_voice', 'F1');
+const initialProsodyProfile = getStoredValue('eburon_prosody_profile', DEFAULT_PROSODY_PROFILE);
 const initialTopic = getStoredValue('eburon_topic', 'Medical Consultation');
 const initialMedicalMode = getStoredValue('eburon_medicalMode', true);
 const initialAutoDetect = getStoredValue('eburon_autoDetect', true);
+const initialOllamaEndpoint = getStoredValue('eburon_ollama_endpoint', 'http://localhost:11434');
 
 const initialSystemPrompt = generateSystemPrompt(
   initialLanguage1,
@@ -147,36 +149,50 @@ export const useSettings = create<{
   systemPrompt: string;
   model: string;
   voice: string;
+  prosodyProfile: string;
   language1: string;
   language2: string;
   topic: string;
   medicalMode: boolean;
   autoDetect: boolean;
+  ollamaEndpoint: string;
   customLanguages: { name: string; value: string }[];
   setSystemPrompt: (prompt: string) => void;
   setModel: (model: string) => void;
   setVoice: (voice: string) => void;
+  setProsodyProfile: (profile: string) => void;
   setLanguage1: (language: string) => void;
   setLanguage2: (language: string) => void;
   setTopic: (topic: string) => void;
   setMedicalMode: (enabled: boolean) => void;
   setAutoDetect: (autoDetect: boolean) => void;
+  setOllamaEndpoint: (endpoint: string) => void;
   addCustomLanguage: (lang: string) => void;
 }>((set, get) => ({
   systemPrompt: initialSystemPrompt,
   model: DEFAULT_LIVE_API_MODEL,
   voice: initialVoice,
+  prosodyProfile: initialProsodyProfile,
   language1: initialLanguage1,
   language2: initialLanguage2,
   topic: initialTopic,
   medicalMode: initialMedicalMode,
   autoDetect: initialAutoDetect,
+  ollamaEndpoint: initialOllamaEndpoint,
   customLanguages: [],
   setSystemPrompt: prompt => set({ systemPrompt: prompt }),
   setModel: model => set({ model }),
   setVoice: voice => {
     setStoredValue('eburon_voice', voice);
     set({ voice });
+  },
+  setProsodyProfile: prosodyProfile => {
+    setStoredValue('eburon_prosody_profile', prosodyProfile);
+    set({ prosodyProfile });
+  },
+  setOllamaEndpoint: endpoint => {
+    setStoredValue('eburon_ollama_endpoint', endpoint);
+    set({ ollamaEndpoint: endpoint });
   },
   setLanguage1: language => {
     get().addCustomLanguage(language);

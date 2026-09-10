@@ -19,46 +19,67 @@
  */
 
 /**
- * Default Live API model to use
+ * Default Local Ollama model to use (Gemma 3 1B)
  */
-export const DEFAULT_LIVE_API_MODEL =
-  'gemini-3.1-flash-live-preview';
+export const DEFAULT_LIVE_API_MODEL = 'gemma3:1b';
 
-export const DEFAULT_VOICE = 'Charon';
+export const DEFAULT_VOICE = 'F1';
+export const DEFAULT_PROSODY_PROFILE = 'balanced';
 
-export const AVAILABLE_VOICES: { name: string; value: string }[] = [
-  { name: 'Gold', value: 'Zephyr' },
-  { name: 'Platinum', value: 'Puck' },
-  { name: 'Silver', value: 'Charon' },
-  { name: 'Palladium', value: 'Luna' },
-  { name: 'Diamond', value: 'Nova' },
-  { name: 'Rhodium', value: 'Kore' },
-  { name: 'Iridium', value: 'Fenrir' },
-  { name: 'Osmium', value: 'Leda' },
-  { name: 'Ruthenium', value: 'Orus' },
-  { name: 'Sapphire', value: 'Aoede' },
-  { name: 'Ruby', value: 'Callirrhoe' },
-  { name: 'Emerald', value: 'Autonoe' },
-  { name: 'Amethyst', value: 'Enceladus' },
-  { name: 'Opal', value: 'Iapetus' },
-  { name: 'Garnet', value: 'Umbriel' },
-  { name: 'Topaz', value: 'Algieba' },
-  { name: 'Jade', value: 'Despina' },
-  { name: 'Pearl', value: 'Erinome' },
-  { name: 'Quartz', value: 'Algenib' },
-  { name: 'Obsidian', value: 'Rasalgethi' },
-  { name: 'Onyx', value: 'Laomedeia' },
-  { name: 'Bronze', value: 'Achernar' },
-  { name: 'Copper', value: 'Alnilam' },
-  { name: 'Steel', value: 'Schedar' },
-  { name: 'Cobalt', value: 'Gacrux' },
-  { name: 'Titanium', value: 'Pulcherrima' },
-  { name: 'Tungsten', value: 'Achird' },
-  { name: 'Nickel', value: 'Zubenelgenubi' },
-  { name: 'Chrome', value: 'Vindemiatrix' },
-  { name: 'Zinc', value: 'Sadachbia' },
-  { name: 'Brass', value: 'Sadaltager' },
-  { name: 'Mercury', value: 'Sulafat' },
+export const AVAILABLE_PROSODY_PROFILES: { name: string; value: string; category: string; description: string }[] = [
+  {
+    name: 'Natural & Balanced (Standard)',
+    value: 'balanced',
+    category: 'Standard',
+    description: 'Natural speech rhythm with neutral conversational inflection',
+  },
+  {
+    name: 'Clinical & Reassuring (Medical)',
+    value: 'clinical',
+    category: 'Healthcare',
+    description: 'Measured, comforting tone tailored for patient discussions',
+  },
+  {
+    name: 'Empathetic & Gentle',
+    value: 'empathetic',
+    category: 'Caregiving',
+    description: 'Softened warmth and soothing cadence for comforting patients',
+  },
+  {
+    name: 'Dynamic & Expressive',
+    value: 'expressive',
+    category: 'Conversational',
+    description: 'Lively pitch range with animated conversational expression',
+  },
+  {
+    name: 'Crisp & High Intelligibility',
+    value: 'articulate',
+    category: 'Accessibility',
+    description: 'High acoustic clarity and distinct consonant articulation',
+  },
+  {
+    name: 'Rapid & Concise',
+    value: 'fast',
+    category: 'Efficiency',
+    description: 'Accelerated pacing with compact pauses for quick readouts',
+  },
+];
+
+export const AVAILABLE_VOICES: { name: string; value: string; gender?: 'female' | 'male' }[] = [
+  { name: 'Supertonic F1 (Clear Neutral)', value: 'F1', gender: 'female' },
+  { name: 'Supertonic F2 (Warm Natural)', value: 'F2', gender: 'female' },
+  { name: 'Supertonic F3 (Dynamic Expressive)', value: 'F3', gender: 'female' },
+  { name: 'Supertonic F4 (Calm Gentle)', value: 'F4', gender: 'female' },
+  { name: 'Supertonic F5 (Bright Conversational)', value: 'F5', gender: 'female' },
+  { name: 'Supertonic M1 (Deep Authoritative)', value: 'M1', gender: 'male' },
+  { name: 'Supertonic M2 (Warm Natural)', value: 'M2', gender: 'male' },
+  { name: 'Supertonic M3 (Energetic Friendly)', value: 'M3', gender: 'male' },
+  { name: 'Supertonic M4 (Crisp Articulate)', value: 'M4', gender: 'male' },
+  { name: 'Supertonic M5 (Smooth Resonant)', value: 'M5', gender: 'male' },
+  // Legacy voice aliases for compatibility
+  { name: 'Orus (Legacy)', value: 'Orus' },
+  { name: 'Charon (Legacy)', value: 'Charon' },
+  { name: 'Puck (Legacy)', value: 'Puck' },
 ];
 
 export const AVAILABLE_LANGUAGES: { name: string; value: string }[] = [

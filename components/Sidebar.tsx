@@ -2,24 +2,79 @@
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
+import React, { useState } from 'react';
 import { useSettings, useUI } from '../lib/state';
 import c from 'classnames';
 import { useLiveAPIContext } from '../contexts/LiveAPIContext';
 import { useAuth } from '../lib/auth';
 import { useHistoryStore } from '../lib/history';
-import { AVAILABLE_LANGUAGES, AVAILABLE_VOICES } from '../lib/constants';
+import { AVAILABLE_LANGUAGES, AVAILABLE_VOICES, AVAILABLE_PROSODY_PROFILES } from '../lib/constants';
+import { supertonicTTS } from '../lib/supertonic-tts';
+import { ollamaTranslator } from '../lib/ollama-translator';
+import OllamaAutoInstallCard from './OllamaAutoInstallCard';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 export default function Sidebar() {
   const { isSidebarOpen, toggleSidebar } = useUI();
   const {
-    systemPrompt, voice, language1, language2, topic, autoDetect, customLanguages, medicalMode,
-    setSystemPrompt, setVoice, setLanguage1, setLanguage2, setTopic, setAutoDetect, setMedicalMode
+    systemPrompt, voice, prosodyProfile, language1, language2, topic, autoDetect, customLanguages, medicalMode,
+    ollamaEndpoint, model,
+    setSystemPrompt, setVoice, setProsodyProfile, setLanguage1, setLanguage2, setTopic, setAutoDetect, setMedicalMode,
+    setOllamaEndpoint, setModel
   } = useSettings();
   const { connected } = useLiveAPIContext();
   const { isSuperAdmin } = useAuth();
   const { history, clearHistory } = useHistoryStore();
+
+  const [testStatus, setTestStatus] = useState<string | null>(null);
+  const [testingOllama, setTestingOllama] = useState(false);
+  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+
+  const handlePreviewVoice = async () => {
+    if (isPlayingPreview) {
+      supertonicTTS.cancel();
+      setIsPlayingPreview(false);
+      return;
+    }
+
+    setIsPlayingPreview(true);
+    supertonicTTS.setVoice(voice);
+    supertonicTTS.setProsodyProfile(prosodyProfile);
+
+    const isDutchFlemish = language1.toLowerCase().includes('dutch') || language1.toLowerCase().includes('flemish');
+    const samplePhrase = isDutchFlemish
+      ? 'Goedendag! Dit is een voorbeeld van Supertonic 3 met het gekozen prosodieprofiel.'
+      : 'Hello! This is a voice sample of Supertonic 3 with your selected prosody profile.';
+
+    try {
+      await supertonicTTS.synthesizeStream(
+        samplePhrase,
+        language1,
+        () => {},
+        () => {
+          setIsPlayingPreview(false);
+        }
+      );
+    } catch (err) {
+      console.warn('Voice preview error:', err);
+      setIsPlayingPreview(false);
+    }
+  };
+
+  const handleTestOllama = async () => {
+    setTestingOllama(true);
+    setTestStatus('Testing connection...');
+    ollamaTranslator.setEndpoint(ollamaEndpoint || 'http://localhost:11434');
+    ollamaTranslator.setModel(model || 'gemma3:1b');
+    const res = await ollamaTranslator.checkHealth();
+    setTestingOllama(false);
+    if (res.ok) {
+      setTestStatus(`Connected! Found ${res.models.length} local models.`);
+    } else {
+      setTestStatus(`Not reachable. Run 'ollama run gemma3:1b' locally or use fallback.`);
+    }
+  };
 
   const handleSave = () => {
     toggleSidebar();
@@ -114,19 +169,86 @@ export default function Sidebar() {
               </div>
             </label>
 
-            <label>
-              AI Voice
-              <select
-                value={voice}
-                onChange={e => setVoice(e.target.value)}
-              >
-                {AVAILABLE_VOICES.map(v => (
-                  <option key={v.value} value={v.value}>
-                    {v.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div className="flex flex-col gap-3 p-3 rounded-lg bg-gray-900/60 border border-gray-800/80">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="icon text-sm">graphic_eq</span> Supertonic 3 TTS
+                </span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 font-mono">
+                  24kHz Audio
+                </span>
+              </div>
+
+              <label>
+                Voice Profile
+                <select
+                  value={voice}
+                  onChange={e => setVoice(e.target.value)}
+                >
+                  <optgroup label="Female Voices (F1–F5)">
+                    {AVAILABLE_VOICES.filter(v => v.gender === 'female').map(v => (
+                      <option key={v.value} value={v.value}>
+                        {v.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Male Voices (M1–M5)">
+                    {AVAILABLE_VOICES.filter(v => v.gender === 'male').map(v => (
+                      <option key={v.value} value={v.value}>
+                        {v.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Legacy Voice Compatibility">
+                    {AVAILABLE_VOICES.filter(v => !v.gender).map(v => (
+                      <option key={v.value} value={v.value}>
+                        {v.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                </select>
+              </label>
+
+              <label>
+                Prosody Profile
+                <select
+                  value={prosodyProfile}
+                  onChange={e => setProsodyProfile(e.target.value)}
+                >
+                  {AVAILABLE_PROSODY_PROFILES.map(p => (
+                    <option key={p.value} value={p.value}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="p-2.5 rounded bg-gray-800/60 border border-gray-700/60 text-xs text-gray-300 flex flex-col gap-1.5">
+                <div className="flex items-center justify-between text-[11px]">
+                  <span className="text-gray-400 font-medium">Style Dynamics:</span>
+                  <span className="font-semibold text-blue-300">
+                    {AVAILABLE_PROSODY_PROFILES.find(p => p.value === prosodyProfile)?.category || 'Standard'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-400 leading-snug">
+                  {AVAILABLE_PROSODY_PROFILES.find(p => p.value === prosodyProfile)?.description}
+                </p>
+
+                <button
+                  type="button"
+                  onClick={handlePreviewVoice}
+                  disabled={connected}
+                  className={`mt-1 text-xs py-1.5 px-3 rounded flex items-center justify-center gap-1.5 transition-colors font-medium ${
+                    isPlayingPreview
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30'
+                      : 'bg-blue-600/80 hover:bg-blue-600 text-white'
+                  }`}
+                >
+                  <span className="icon text-sm">{isPlayingPreview ? 'stop' : 'volume_up'}</span>
+                  <span>{isPlayingPreview ? 'Stop Sample' : 'Preview Voice & Prosody'}</span>
+                </button>
+              </div>
+            </div>
 
             <div className="flex flex-col gap-2 mt-4">
               <label className="sidebar-section-title">Translation Mode</label>
@@ -148,6 +270,58 @@ export default function Sidebar() {
                 />
                 General
               </label>
+            </div>
+
+            <div className="flex flex-col gap-2 mt-4 pt-3 border-t border-gray-700/40">
+              <label className="sidebar-section-title">Local Edge AI Engine</label>
+              
+              {/* Automated Ollama Server & Model Auto-Installer Card */}
+              <OllamaAutoInstallCard />
+
+              <label className="mt-2">
+                Ollama Endpoint (Advanced)
+                <input
+                  type="text"
+                  value={ollamaEndpoint}
+                  onChange={e => setOllamaEndpoint(e.target.value)}
+                  placeholder="http://localhost:11434"
+                  className="w-full text-xs p-1.5 rounded bg-gray-900 border border-gray-700"
+                />
+              </label>
+
+              <label>
+                Local LLM Model
+                <input
+                  type="text"
+                  value={model}
+                  onChange={e => setModel(e.target.value)}
+                  placeholder="gemma3:1b"
+                  className="w-full text-xs p-1.5 rounded bg-gray-900 border border-gray-700"
+                />
+                <span className="text-[10px] text-gray-400 mt-0.5 block">Recommended: gemma3:1b (mobile-ready, ~850MB)</span>
+              </label>
+
+              <div className="flex flex-col gap-1 mt-1">
+                <button
+                  type="button"
+                  onClick={handleTestOllama}
+                  disabled={testingOllama}
+                  className="text-xs px-2.5 py-1.5 rounded bg-blue-600/80 hover:bg-blue-600 text-white transition-colors"
+                >
+                  {testingOllama ? 'Connecting...' : 'Test Ollama Connection'}
+                </button>
+                {testStatus && (
+                  <span className={`text-[11px] mt-1 leading-snug ${testStatus.includes('Connected') ? 'text-green-400' : 'text-amber-400'}`}>
+                    {testStatus}
+                  </span>
+                )}
+              </div>
+
+              <div className="text-[11px] text-gray-400 mt-2 p-2 rounded bg-gray-800/40 border border-gray-700/50">
+                <div>⚡ <strong>Local STT:</strong> Multilingual Realtime Detection (10+ languages)</div>
+                <div className="mt-1">🧠 <strong>LLM:</strong> Gemma 3 1B on Ollama (Local Edge)</div>
+                <div className="mt-1">🗣️ <strong>TTS:</strong> Supertonic 3 (Dutch Flemish Prosody)</div>
+              </div>
             </div>
           </fieldset>
           <button
