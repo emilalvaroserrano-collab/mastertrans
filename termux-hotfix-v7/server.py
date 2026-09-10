@@ -70,10 +70,10 @@ async def live(ws:WebSocket):
             audio=b"".join(audio_parts); audio_parts.clear(); t0=time.perf_counter()
             try:
                 assert client
-                r=await client.post(f"{STT_URL}/inference",files={"file":("utterance.webm",audio,"audio/webm")},data={"language":"auto","response_format":"json","temperature":"0.0"})
+                r=await client.post(f"{STT_URL}/inference",files={"file":("utterance.webm",audio,"audio/webm")},data={"language":"auto","response_format":"verbose_json","temperature":"0.0","no_language_probabilities":"true"})
                 r.raise_for_status(); data=r.json()
                 transcript=str(data.get("text","")).strip()
-                detected=base_lang(str(data.get("language","auto")))
+                detected=base_lang(str(data.get("detected_language") or data.get("language") or "auto"))
                 if not transcript:
                     await ws.send_json({"type":"turn_complete","empty":True}); continue
                 await ws.send_json({"type":"transcript_final","text":transcript,"language":detected,"latency_ms":round((time.perf_counter()-t0)*1000)})
