@@ -3,7 +3,8 @@ set -euo pipefail
 
 REPO="emilalvaroserrano-collab/mastertrans"
 BRANCH="main"
-VERSION="v0.1.0-r7.1"
+HOTFIX_REF="c2e447653b59189e41e0ccfb94becb795a717de1"
+VERSION="v0.1.0-r7.2"
 PACKAGE="eburon-edge-termux-tablet-mvp-v0.1.0.zip"
 PACKAGE_SHA256="1a4b71f593f5025d47c3db1b515a7415649c73725a405993fef6a99cc6aae658"
 RAW_BASE="https://raw.githubusercontent.com/${REPO}/${BRANCH}/dist"
