@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 PAYLOAD="${1:?payload root required}"
-BASE="https://raw.githubusercontent.com/emilalvaroserrano-collab/mastertrans/5d88b5d8b3b863e11b31fc26278ba9412fe45cf5"
+BASE="https://raw.githubusercontent.com/emilalvaroserrano-collab/mastertrans/76a14569feb2f54ecec06fb344961e2522c881d1"
 echo "[compat-v7] Applying realtime STT -> translator LLM -> TTS pipeline"
 
 get(){ curl -fLsS --retry 6 --retry-delay 2 --retry-all-errors "$1" -o "$2"; }
