@@ -37,7 +37,7 @@ if quiet_ok "http://127.0.0.1:$EBURON_STT_PORT/"; then
 else
   # Browser sends WebM/Opus. --convert is required so whisper.cpp invokes local ffmpeg
   # and converts each utterance to WAV before inference.
-  start_proc stt "exec '$ROOT/bin/whisper-server' --host 127.0.0.1 --port '$EBURON_STT_PORT' -m '$ROOT/models/$WHISPER_MODEL_NAME' -l auto -t '$WHISPER_THREADS' --convert -ng -nc -sns"
+  start_proc stt "exec '$ROOT/bin/whisper-server' --host 127.0.0.1 --port '$EBURON_STT_PORT' -m '$ROOT/models/$WHISPER_MODEL_NAME' -l auto -t '$WHISPER_THREADS' --convert -ng -sns"
   wait_ready stt "http://127.0.0.1:$EBURON_STT_PORT/" 90
 fi
 
