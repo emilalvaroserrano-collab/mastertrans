@@ -391,8 +391,8 @@ export class LocalSTT {
     }
     const avgEnergy = len > 0 ? sum / len : 0;
 
-    // Speech threshold (quiet room ~30-100, voice ~220-3000)
-    const isVoice = avgEnergy > 200;
+    // Speech threshold (quiet room ~30-100, voice ~130-3000) - optimized for high sensitivity
+    const isVoice = avgEnergy > 130;
 
     if (isVoice) {
       if (!this.isSpeaking) {
@@ -416,10 +416,10 @@ export class LocalSTT {
       this.totalBufferedSamples += len;
 
       if (!this.silenceTimeout) {
-        // After 350ms of silence, process utterance for very low latency
+        // After 220ms of silence, process utterance for ultra-low latency
         this.silenceTimeout = setTimeout(() => {
           this.flushAndTranscribeBuffer();
-        }, 350);
+        }, 220);
       }
     }
   }
@@ -451,8 +451,8 @@ export class LocalSTT {
     this.silenceTimeout = null;
     this.notifyStatusChange();
 
-    if (this.totalBufferedSamples < 4000) {
-      // Discard brief clicks/noise (<0.25s)
+    if (this.totalBufferedSamples < 2000) {
+      // Discard brief clicks/noise (<0.125s)
       this.collectedChunks = [];
       this.totalBufferedSamples = 0;
       return;

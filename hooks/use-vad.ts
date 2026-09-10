@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { type AudioRecorder } from '../lib/audio-recorder';
 
-export const useVAD = (audioRecorder: AudioRecorder, threshold: number = 0.05, duration: number = 1500) => {
+export const useVAD = (audioRecorder: AudioRecorder, threshold: number = 0.03, duration: number = 800) => {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const silenceTimer = useRef<NodeJS.Timeout | null>(null);
 
