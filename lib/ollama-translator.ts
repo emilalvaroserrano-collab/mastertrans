@@ -30,7 +30,7 @@ export interface OllamaStreamCallbacks {
 }
 
 export class OllamaTranslator {
-  private endpoint: string = 'http://localhost:11434';
+  private endpoint: string = '/api/ollama';
   private model: string = 'gemma3:1b';
   private abortController: AbortController | null = null;
   private isConnected: boolean = false;
@@ -287,81 +287,29 @@ Translate directly:`;
   ): Promise<string> {
     const clean = text.trim();
     if (!clean) return '';
-
-    const isToDutch = targetLang.toLowerCase().includes('dutch') || targetLang.toLowerCase().includes('flemish');
-    const isFromDutch = sourceLang.toLowerCase().includes('dutch') || sourceLang.toLowerCase().includes('flemish');
-
-    // Medical term substitutions
-    const commonMedicalDict: Record<string, { nl: string; en: string }> = {
-      'headache': { nl: 'hoofdpijn', en: 'headache' },
-      'hoofdpijn': { nl: 'hoofdpijn', en: 'headache' },
-      'fever': { nl: 'koorts', en: 'fever' },
-      'koorts': { nl: 'koorts', en: 'fever' },
-      'pain': { nl: 'pijn', en: 'pain' },
-      'pijn': { nl: 'pijn', en: 'pain' },
-      'chest pain': { nl: 'pijn op de borst', en: 'chest pain' },
-      'blood pressure': { nl: 'bloeddruk', en: 'blood pressure' },
-      'bloeddruk': { nl: 'bloeddruk', en: 'blood pressure' },
-      'hypertension': { nl: 'hypertensie (hoge bloeddruk)', en: 'hypertension' },
-      'medication': { nl: 'medicatie', en: 'medication' },
-      'medicatie': { nl: 'medicatie', en: 'medication' },
-      'doctor': { nl: 'arts', en: 'doctor' },
-      'arts': { nl: 'arts', en: 'doctor' },
-      'prescription': { nl: 'voorschrift', en: 'prescription' },
-      'voorschrift': { nl: 'voorschrift', en: 'prescription' },
-      'cough': { nl: 'hoest', en: 'cough' },
-      'hoest': { nl: 'hoest', en: 'cough' },
-      'dizziness': { nl: 'duizeligheid', en: 'dizziness' },
-      'duizeligheid': { nl: 'duizeligheid', en: 'dizziness' },
-      'stomach': { nl: 'maag', en: 'stomach' },
-      'maag': { nl: 'maag', en: 'stomach' },
-      'nausea': { nl: 'misselijkheid', en: 'nausea' },
-      'misselijkheid': { nl: 'misselijkheid', en: 'nausea' },
-    };
-
-    // Frequent conversational phrase patterns
-    const commonPhrases: Record<string, { nl: string; en: string }> = {
-      'hello': { nl: 'Hallo, goedendag', en: 'Hello, good day' },
-      'good morning': { nl: 'Goedemorgen', en: 'Good morning' },
-      'good afternoon': { nl: 'Goedemiddag', en: 'Good afternoon' },
-      'how are you': { nl: 'Hoe stelt u het?', en: 'How are you?' },
-      'hoe gaat het': { nl: 'Hoe gaat het met u?', en: 'How are you doing?' },
-      'how can i help you': { nl: 'Waarmee kan ik u van dienst zijn?', en: 'How can I help you?' },
-      'waar heeft u pijn': { nl: 'Waar heeft u pijn?', en: 'Where does it hurt?' },
-      'where does it hurt': { nl: 'Waar voelt u de pijn precies?', en: 'Where exactly do you feel the pain?' },
-      'take a deep breath': { nl: 'Haal alstublieft diep adem', en: 'Please take a deep breath' },
-      'adem diep in': { nl: 'Adem diep in', en: 'Take a deep breath' },
-      'thank you': { nl: 'Dank u wel', en: 'Thank you' },
-      'dank u': { nl: 'Dank u wel', en: 'Thank you' },
-      'please wait a moment': { nl: 'Een ogenblik geduld alstublieft', en: 'Please wait a moment' },
-      'i have a severe headache': { nl: 'Ik heb ernstige hoofdpijn', en: 'I have a severe headache' },
-      'ik heb ernstige hoofdpijn': { nl: 'Ik heb ernstige hoofdpijn', en: 'I have severe headache' },
-      'my chest hurts': { nl: 'Ik heb pijn op mijn borst', en: 'My chest hurts' },
-      'do you have any allergies': { nl: 'Bent u ergens allergisch voor?', en: 'Do you have any allergies?' },
-    };
-
-    const lowerClean = clean.toLowerCase().replace(/[?!.,]/g, '').trim();
-    if (commonPhrases[lowerClean]) {
-      return isToDutch ? commonPhrases[lowerClean].nl : commonPhrases[lowerClean].en;
-    }
-
-    // If text contains known medical terms
-    for (const [term, trans] of Object.entries(commonMedicalDict)) {
-      if (lowerClean.includes(term)) {
-        if (isToDutch) {
-          return `[Medische vertaling]: ${clean.replace(new RegExp(term, 'gi'), trans.nl)}`;
-        } else {
-          return `[Medical translation]: ${clean.replace(new RegExp(term, 'gi'), trans.en)}`;
+    try {
+      const res = await fetch('/api/translate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: clean,
+          sourceLang,
+          targetLang,
+          medicalMode
+        }),
+        signal: this.abortController?.signal
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok && data.text) {
+          return data.text;
         }
       }
+    } catch (err) {
+      console.error("Gemini translation fallback error:", err);
     }
-
-    // Default contextual translation formatting
-    if (isToDutch) {
-      return `Vertaling naar het ${targetLang}: ${clean}`;
-    } else {
-      return `Translation to ${targetLang}: ${clean}`;
-    }
+    // Final hard fallback if even the cloud API fails
+    return clean;
   }
 }
 

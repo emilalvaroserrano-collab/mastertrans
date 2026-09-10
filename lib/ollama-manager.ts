@@ -117,6 +117,12 @@ export class OllamaManager {
           this.pullModel('gemma3:1b');
         }
 
+        // Auto-install if not installed
+        if (!this.currentStatus.installed && !this.currentStatus.isInstalling) {
+          // Fire and forget
+          this.autoInstallAndSetup().catch(console.error);
+        }
+
         this.notify();
         return this.currentStatus;
       }

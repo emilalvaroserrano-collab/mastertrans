@@ -263,7 +263,6 @@ export class Supertonic3TTS {
 
       // If Web Speech synthesis is available in browser:
       // We can simultaneously use the browser speech synthesis with Dutch (Flemish) voice
-      // and synthesize acoustic PCM waveforms so that the UI audio streamer and visualizer receive PCM16!
       await this.synthesizeHybrid(cleanText, language, onAudioChunk);
 
       if (!this.isCancelled) {
@@ -271,10 +270,7 @@ export class Supertonic3TTS {
       }
     } catch (err) {
       console.warn('Supertonic 3 synthesis fallback:', err);
-      // Fallback: generate high-fidelity PCM audio signal directly
-      const pcmFallback = this.generateAcousticPCM(cleanText, language);
       if (!this.isCancelled) {
-        onAudioChunk(pcmFallback);
         onComplete?.();
       }
     } finally {
@@ -333,24 +329,7 @@ export class Supertonic3TTS {
     const voiceConfig = this.getVoice();
     const prosodyConfig = this.getProsodyProfile();
 
-    // 1. Generate real PCM16 audio for AudioStreamer so the AudioContext VU meter & visualizer pulse
-    const pcm = this.generateAcousticPCM(text, language);
-    
-    // Chunk PCM into ~40ms slices so AudioStreamer streams smoothly
-    const chunkSize = 1920; // 960 samples @ 24kHz * 2 bytes = 40ms
-    const totalBytes = pcm.byteLength;
-    for (let offset = 0; offset < totalBytes; offset += chunkSize) {
-      if (this.isCancelled) break;
-      const end = Math.min(offset + chunkSize, totalBytes);
-      const slice = pcm.slice(offset, end);
-      onAudioChunk(slice);
-      // Brief yield to allow event loop and audio streamer to schedule
-      if (offset % (chunkSize * 4) === 0) {
-        await new Promise(r => setTimeout(r, 10));
-      }
-    }
-
-    // 2. Play audible speech via browser SpeechSynthesis with Dutch Flemish voice matching Supertonic preset
+    // Play audible speech via browser SpeechSynthesis with Voice matching preset
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       await new Promise<void>((resolve) => {
         window.speechSynthesis.cancel();
@@ -381,6 +360,11 @@ export class Supertonic3TTS {
 
         // Find best matching system voice
         const voices = window.speechSynthesis.getVoices();
+        // Prefer non-local (usually higher quality cloud-based/premium) voices if available
+        voices.sort((a, b) => {
+          if (a.localService === b.localService) return 0;
+          return a.localService ? 1 : -1; // Cloud services (localService=false) come first
+        });
         const langPrefix = utterance.lang.split('-')[0];
         const matchingVoice = voices.find(v => 
           (v.lang.startsWith(utterance.lang) || v.lang.startsWith(langPrefix)) &&
@@ -403,67 +387,6 @@ export class Supertonic3TTS {
         window.speechSynthesis.speak(utterance);
       });
     }
-  }
-
-  /**
-   * Generates acoustic PCM16 waveforms for AudioStreamer VU-meter and playback.
-   * Models the fundamental frequency, harmonics, and formants of Supertonic 3 with prosody shaping.
-   */
-  private generateAcousticPCM(text: string, language: string): ArrayBuffer {
-    const voice = this.getVoice();
-    const prosody = this.getProsodyProfile();
-
-    const effectiveRate = voice.rate * prosody.rateMultiplier;
-    const durationSec = Math.max(0.6, text.length * 0.055 * (1 / effectiveRate));
-    const totalSamples = Math.floor(durationSec * this.sampleRate);
-    const buffer = new ArrayBuffer(totalSamples * 2);
-    const view = new DataView(buffer);
-
-    const f0 = voice.basePitch * prosody.pitchMultiplier;
-    const isDutch = language.toLowerCase().includes('dutch') || language.toLowerCase().includes('flemish');
-    // Pitch inflection typical of Dutch / Flemish declarative sentences shaped by prosody variance
-    const baseDrop = isDutch ? 0.88 : 0.92;
-    const pitchDrop = 1.0 - (1.0 - baseDrop) * prosody.pitchVariance;
-
-    for (let i = 0; i < totalSamples; i++) {
-      const t = i / this.sampleRate;
-      const progress = i / totalSamples;
-
-      // Natural speech envelope (attack, sustain, decay)
-      let env = 1.0;
-      if (t < 0.05) {
-        env = t / 0.05;
-      } else if (progress > 0.85) {
-        env = (1 - progress) / 0.15;
-      }
-
-      // Syllable modulation (rhythmic pulsing of speech ~4.5Hz scaled by speaking rate)
-      const syllableFreq = 4.5 * prosody.rateMultiplier;
-      const syllableMod = 0.5 + 0.5 * Math.sin(2 * Math.PI * syllableFreq * t);
-
-      // Pitch contour
-      const currentPitch = f0 * (1.0 - (1.0 - pitchDrop) * progress);
-
-      // Fundamental harmonic
-      let sample = Math.sin(2 * Math.PI * currentPitch * t);
-      // 2nd harmonic
-      sample += 0.5 * Math.sin(4 * Math.PI * currentPitch * t);
-      // 3rd harmonic
-      sample += 0.25 * Math.sin(6 * Math.PI * currentPitch * t);
-      // Formant resonance
-      sample += 0.15 * Math.sin(2 * Math.PI * voice.timbre.formantF1 * t);
-      sample += 0.1 * Math.sin(2 * Math.PI * voice.timbre.formantF2 * t);
-      // Breathiness / aspiration noise scaled by prosody breathiness
-      sample += (Math.random() * 2 - 1) * voice.timbre.breathiness * prosody.breathinessMultiplier;
-
-      // Normalize and scale to 16-bit signed integer
-      sample = sample * env * syllableMod * 0.45;
-      const clamped = Math.max(-1, Math.min(1, sample));
-      const int16 = Math.floor(clamped * 32767);
-      view.setInt16(i * 2, int16, true);
-    }
-
-    return buffer;
   }
 }
 

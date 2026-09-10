@@ -154,8 +154,13 @@ export class GenAILiveClient {
   }
 
   public sendRealtimeInput(chunks: Array<{ mimeType: string; data: string }>) {
-    // Microphone audio chunk passed from AudioRecorder.
-    // AudioRecorder feeds the visualizer and volume meter directly.
+    // Microphone audio chunks passed from AudioRecorder.
+    // Forward audio chunk to localSTT for real-time VAD processing and transcription
+    for (const chunk of chunks) {
+      if (chunk?.data) {
+        localSTT.feedAudioChunk(chunk.data);
+      }
+    }
   }
 
   public send(parts: any, turnComplete: boolean = true) {

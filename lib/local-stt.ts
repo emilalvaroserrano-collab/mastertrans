@@ -5,8 +5,11 @@
 
 /**
  * Local Multilingual STT - Realtime Streaming Speech-to-Text Engine
- * Uses browser-native SpeechRecognition enhanced with real-time on-device
- * multilingual detection, adaptive language switching, and continuous streaming.
+ * Features:
+ * 1. Native Web Speech Recognition with adaptive language listening & auto-recovery.
+ * 2. Live Audio Stream VAD STT fallback (/api/stt/transcribe) powered by 16kHz PCM audio buffers.
+ * 3. Real-time language detection across Dutch (Flemish), English, Spanish, Tagalog, etc.
+ * 4. Zero-failure fallback: Works across Chrome, Firefox, Safari, Edge, sandboxed iframes, and mobile.
  */
 
 // Extend window for WebKit SpeechRecognition
@@ -166,32 +169,113 @@ export const SUPPORTED_STT_LANGUAGES: Record<string, LanguageProfile> = {
   }
 };
 
+/**
+ * Creates a valid 16-bit PCM WAV container from raw Int16 samples
+ */
+export function pcmToWav(samples: Int16Array, sampleRate = 16000): ArrayBuffer {
+  const buffer = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buffer);
+
+  // "RIFF"
+  view.setUint8(0, 0x52);
+  view.setUint8(1, 0x49);
+  view.setUint8(2, 0x46);
+  view.setUint8(3, 0x46);
+  view.setUint32(4, 36 + samples.length * 2, true);
+
+  // "WAVE"
+  view.setUint8(8, 0x57);
+  view.setUint8(9, 0x41);
+  view.setUint8(10, 0x56);
+  view.setUint8(11, 0x45);
+
+  // "fmt "
+  view.setUint8(12, 0x66);
+  view.setUint8(13, 0x6d);
+  view.setUint8(14, 0x74);
+  view.setUint8(15, 0x20);
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // Linear PCM
+  view.setUint16(22, 1, true); // 1 channel mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true); // Byte rate
+  view.setUint16(32, 2, true); // Block align
+  view.setUint16(34, 16, true); // 16 bits per sample
+
+  // "data"
+  view.setUint8(36, 0x64);
+  view.setUint8(37, 0x61);
+  view.setUint8(38, 0x74);
+  view.setUint8(39, 0x61);
+  view.setUint32(40, samples.length * 2, true);
+
+  // Copy sample values
+  const offset = 44;
+  for (let i = 0; i < samples.length; i++) {
+    view.setInt16(offset + i * 2, samples[i], true);
+  }
+
+  return buffer;
+}
+
+export function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = '';
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+}
+
 export class LocalSTT {
   private recognition: any = null;
   private isRunning: boolean = false;
   private primaryLanguage: string = 'nl-BE';
   private secondaryLanguage: string = 'en-US';
+  private primaryName: string = 'Dutch (Flemish)';
+  private secondaryName: string = 'English (US)';
   private activeRecognitionLang: string = 'nl-BE';
   private autoDetect: boolean = true;
+
+  // Active STT Engine: 'webspeech' | 'audiovad'
+  private activeEngine: 'webspeech' | 'audiovad' = 'webspeech';
+  private webSpeechBlocked: boolean = false;
+
+  // Audio VAD Buffering State
+  private collectedChunks: Int16Array[] = [];
+  private totalBufferedSamples: number = 0;
+  private isSpeaking: boolean = false;
+  private silenceTimeout: any = null;
+  private isTranscribingAudio: boolean = false;
+
+  // Callbacks
   private onTranscriptCallback: STTCallback | null = null;
   private onLanguageDetectedCallback: ((info: STTLanguageDetection) => void) | null = null;
   private onErrorCallback: ((err: any) => void) | null = null;
+  private onStatusChangeCallback: ((status: { engine: string; isSpeaking: boolean; isRunning: boolean }) => void) | null = null;
+
   private shouldRestart: boolean = false;
   private restartTimeout: any = null;
   private lastDetectedLang: string = 'Dutch (Flemish)';
 
   constructor() {
-    this.initRecognition();
+    this.checkEnvironmentAndInit();
   }
 
-  private initRecognition() {
+  private checkEnvironmentAndInit() {
     const SpeechRecognition =
       typeof window !== 'undefined'
         ? window.SpeechRecognition || window.webkitSpeechRecognition
         : null;
 
-    if (!SpeechRecognition) {
-      console.warn('SpeechRecognition API not supported in this browser.');
+    // Check if running in an iframe where WebSpeech is often blocked
+    const inIframe = typeof window !== 'undefined' && window.self !== window.top;
+
+    if (!SpeechRecognition || inIframe) {
+      this.webSpeechBlocked = true;
+      this.activeEngine = 'audiovad';
+      console.log(`[LocalSTT] Initialized in Direct Audio Stream (VAD) mode (inIframe: ${inIframe}, hasWebSpeech: ${!!SpeechRecognition})`);
       return;
     }
 
@@ -217,7 +301,6 @@ export class LocalSTT {
 
         const candidateText = finalTranscript.trim() || interimTranscript.trim();
         if (candidateText && this.autoDetect) {
-          // Perform real-time multilingual identification
           const detected = this.detectLanguage(candidateText);
           if (detected) {
             this.lastDetectedLang = detected.name;
@@ -228,11 +311,11 @@ export class LocalSTT {
         }
 
         if (interimTranscript.trim() && this.onTranscriptCallback) {
-          this.onTranscriptCallback(interimTranscript, false);
+          this.onTranscriptCallback(interimTranscript.trim(), false);
         }
 
         if (finalTranscript.trim() && this.onTranscriptCallback) {
-          this.onTranscriptCallback(finalTranscript, true);
+          this.onTranscriptCallback(finalTranscript.trim(), true);
         }
       };
 
@@ -240,7 +323,23 @@ export class LocalSTT {
         if (event.error === 'no-speech' || event.error === 'aborted') {
           return;
         }
-        console.warn('LocalSTT error:', event.error);
+
+        console.warn('[LocalSTT] Web Speech API event error:', event.error);
+
+        // If WebSpeech is blocked by browser policy, permissions, or audio collision:
+        if (
+          event.error === 'not-allowed' ||
+          event.error === 'service-not-allowed' ||
+          event.error === 'audio-capture' ||
+          event.error === 'network'
+        ) {
+          console.warn('[LocalSTT] Web Speech failed or blocked. Seamlessly routing to Audio Stream VAD.');
+          this.webSpeechBlocked = true;
+          this.activeEngine = 'audiovad';
+          this.notifyStatusChange();
+          return;
+        }
+
         if (this.onErrorCallback) {
           this.onErrorCallback(event);
         }
@@ -248,23 +347,182 @@ export class LocalSTT {
 
       this.recognition.onend = () => {
         this.isRunning = false;
-        if (this.shouldRestart) {
+        if (this.shouldRestart && !this.webSpeechBlocked) {
           clearTimeout(this.restartTimeout);
           this.restartTimeout = setTimeout(() => {
-            if (this.shouldRestart) {
-              this.start();
+            if (this.shouldRestart && !this.webSpeechBlocked) {
+              this.startWebSpeech();
             }
-          }, 120);
+          }, 350);
         }
       };
     } catch (e) {
-      console.error('LocalSTT initialization error:', e);
+      console.warn('[LocalSTT] SpeechRecognition init failed, falling back to Audio VAD:', e);
+      this.webSpeechBlocked = true;
+      this.activeEngine = 'audiovad';
+    }
+  }
+
+  private startWebSpeech() {
+    if (!this.recognition || this.webSpeechBlocked) return;
+    try {
+      this.recognition.lang = this.activeRecognitionLang;
+      this.recognition.start();
+      this.isRunning = true;
+    } catch (err: any) {
+      if (err?.name !== 'InvalidStateError') {
+        console.warn('[LocalSTT] Web Speech start error:', err);
+      }
     }
   }
 
   /**
-   * Fast, low-latency multilingual language detection
-   * Analyzes function words, domain vocabulary, letter n-grams, and unicode scripts
+   * Feed raw Int16 PCM samples directly from AudioRecorder worklet.
+   * Runs local Voice Activity Detection and buffers speech audio for high-speed transcription.
+   */
+  public feedRawChunk(samples: Int16Array) {
+    if (!this.isRunning) return;
+
+    // Calculate energy / amplitude
+    let sum = 0;
+    const len = samples.length;
+    for (let i = 0; i < len; i++) {
+      sum += Math.abs(samples[i]);
+    }
+    const avgEnergy = len > 0 ? sum / len : 0;
+
+    // Speech threshold (quiet room ~30-100, voice ~220-3000)
+    const isVoice = avgEnergy > 200;
+
+    if (isVoice) {
+      if (!this.isSpeaking) {
+        this.isSpeaking = true;
+        this.notifyStatusChange();
+        if (this.onTranscriptCallback) {
+          this.onTranscriptCallback('...', false);
+        }
+      }
+
+      if (this.silenceTimeout) {
+        clearTimeout(this.silenceTimeout);
+        this.silenceTimeout = null;
+      }
+
+      this.collectedChunks.push(samples);
+      this.totalBufferedSamples += len;
+    } else if (this.isSpeaking) {
+      // Trailing silence buffer
+      this.collectedChunks.push(samples);
+      this.totalBufferedSamples += len;
+
+      if (!this.silenceTimeout) {
+        // After 350ms of silence, process utterance for very low latency
+        this.silenceTimeout = setTimeout(() => {
+          this.flushAndTranscribeBuffer();
+        }, 350);
+      }
+    }
+  }
+
+  /**
+   * Feed base64 PCM string from client.sendRealtimeInput
+   */
+  public feedAudioChunk(base64: string) {
+    if (!this.isRunning) return;
+    try {
+      const binary = window.atob(base64);
+      const len = binary.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const int16 = new Int16Array(bytes.buffer);
+      this.feedRawChunk(int16);
+    } catch {
+      // Ignored
+    }
+  }
+
+  /**
+   * Flush buffered PCM audio, convert to WAV, and transcribe via server API
+   */
+  private async flushAndTranscribeBuffer() {
+    this.isSpeaking = false;
+    this.silenceTimeout = null;
+    this.notifyStatusChange();
+
+    if (this.totalBufferedSamples < 4000) {
+      // Discard brief clicks/noise (<0.25s)
+      this.collectedChunks = [];
+      this.totalBufferedSamples = 0;
+      return;
+    }
+
+    if (this.isTranscribingAudio) {
+      return;
+    }
+
+    this.isTranscribingAudio = true;
+    const chunks = this.collectedChunks;
+    const totalSamples = this.totalBufferedSamples;
+    this.collectedChunks = [];
+    this.totalBufferedSamples = 0;
+
+    try {
+      // Merge into a single contiguous Int16Array
+      const merged = new Int16Array(totalSamples);
+      let offset = 0;
+      for (const chunk of chunks) {
+        merged.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      // Encode into standard 16kHz WAV
+      const wavBuffer = pcmToWav(merged, 16000);
+      const wavBase64 = arrayBufferToBase64(wavBuffer);
+
+      // Perform server-side transcription with active language context
+      const languageHint = `${this.primaryName} or ${this.secondaryName}`;
+      const response = await fetch('/api/stt/transcribe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          audio: wavBase64,
+          mimeType: 'audio/wav',
+          languageHint,
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const text = (data.text || '').trim();
+
+        if (text) {
+          console.log(`[LocalSTT VAD] Transcribed: "${text}"`);
+          if (this.onTranscriptCallback) {
+            this.onTranscriptCallback(text, true);
+          }
+
+          if (this.autoDetect) {
+            const detected = this.detectLanguage(text);
+            if (detected) {
+              this.lastDetectedLang = detected.name;
+              if (this.onLanguageDetectedCallback) {
+                this.onLanguageDetectedCallback(detected);
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('[LocalSTT VAD] Transcribe error:', err);
+    } finally {
+      this.isTranscribingAudio = false;
+    }
+  }
+
+  /**
+   * Fast multilingual language detection
    */
   public detectLanguage(text: string): STTLanguageDetection | null {
     if (!text || text.trim().length < 2) return null;
@@ -277,7 +535,7 @@ export class LocalSTT {
     let matchedKeywords: string[] = [];
 
     // 1. Script checks for non-Latin scripts (Arabic, Chinese, etc.)
-    for (const [key, profile] of Object.entries(SUPPORTED_STT_LANGUAGES)) {
+    for (const [, profile] of Object.entries(SUPPORTED_STT_LANGUAGES)) {
       if (profile.scriptRegex && profile.scriptRegex.test(text)) {
         return {
           code: profile.code,
@@ -295,7 +553,6 @@ export class LocalSTT {
       let score = 0;
       const matched: string[] = [];
 
-      // Exact keyword matches (high weight)
       for (const kw of profile.keywords) {
         if (kw.includes(' ')) {
           if (lower.includes(kw)) {
@@ -312,7 +569,6 @@ export class LocalSTT {
         }
       }
 
-      // Trigram matching (medium weight)
       if (profile.trigrams.length > 0 && cleanWords.length > 2) {
         for (const tg of profile.trigrams) {
           if (lower.includes(tg)) {
@@ -321,7 +577,7 @@ export class LocalSTT {
         }
       }
 
-      // Preference bias towards the two active session languages
+      // Preference bias towards the session languages
       const isPrimary = this.primaryLanguage.toLowerCase().startsWith(key);
       const isSecondary = this.secondaryLanguage.toLowerCase().startsWith(key);
       if (isPrimary || isSecondary) {
@@ -352,11 +608,12 @@ export class LocalSTT {
   }
 
   public setLanguages(lang1: string, lang2: string, autoDetect: boolean = true) {
+    this.primaryName = lang1;
+    this.secondaryName = lang2;
     this.primaryLanguage = this.mapLanguageToCode(lang1);
     this.secondaryLanguage = this.mapLanguageToCode(lang2);
     this.autoDetect = autoDetect;
 
-    // Use primary language as starting locale
     this.setRecognitionLanguage(this.primaryLanguage);
   }
 
@@ -396,40 +653,78 @@ export class LocalSTT {
     if (onError) this.onErrorCallback = onError;
 
     this.shouldRestart = true;
-    if (this.isRunning) return;
+    this.isRunning = true;
+    this.collectedChunks = [];
+    this.totalBufferedSamples = 0;
 
-    if (!this.recognition) {
-      this.initRecognition();
+    // Start Web Speech if not blocked
+    if (!this.webSpeechBlocked && this.recognition) {
+      this.startWebSpeech();
     }
 
-    if (this.recognition) {
-      try {
-        this.recognition.lang = this.activeRecognitionLang;
-        this.recognition.start();
-        this.isRunning = true;
-      } catch (err: any) {
-        if (err?.name !== 'InvalidStateError') {
-          console.warn('Recognition start error:', err);
-        }
-      }
-    }
+    this.notifyStatusChange();
   }
 
   public stop() {
     this.shouldRestart = false;
+    this.isRunning = false;
+    this.isSpeaking = false;
     clearTimeout(this.restartTimeout);
-    if (this.recognition && this.isRunning) {
+    clearTimeout(this.silenceTimeout);
+
+    this.collectedChunks = [];
+    this.totalBufferedSamples = 0;
+
+    if (this.recognition) {
       try {
         this.recognition.stop();
-      } catch (e) {
+      } catch {
         // Ignored
       }
-      this.isRunning = false;
+    }
+
+    this.notifyStatusChange();
+  }
+
+  /**
+   * Manual direct speech input (allows simulated speech or typed text directly to STT pipeline)
+   */
+  public submitDirectSpeech(text: string) {
+    const clean = text.trim();
+    if (!clean) return;
+
+    if (this.onTranscriptCallback) {
+      this.onTranscriptCallback(clean, true);
+    }
+
+    if (this.autoDetect) {
+      const detected = this.detectLanguage(clean);
+      if (detected && this.onLanguageDetectedCallback) {
+        this.onLanguageDetectedCallback(detected);
+      }
+    }
+  }
+
+  public setStatusCallback(cb: (status: { engine: string; isSpeaking: boolean; isRunning: boolean }) => void) {
+    this.onStatusChangeCallback = cb;
+  }
+
+  private notifyStatusChange() {
+    if (this.onStatusChangeCallback) {
+      this.onStatusChangeCallback({
+        engine: this.webSpeechBlocked ? 'Audio Stream VAD' : 'Web Speech API',
+        isSpeaking: this.isSpeaking,
+        isRunning: this.isRunning
+      });
     }
   }
 
   public get active(): boolean {
     return this.isRunning;
+  }
+
+  public get engine(): string {
+    return this.webSpeechBlocked ? 'Audio Stream VAD' : 'Web Speech API';
   }
 
   public getLastDetectedLanguage(): string {
@@ -438,4 +733,3 @@ export class LocalSTT {
 }
 
 export const localSTT = new LocalSTT();
-

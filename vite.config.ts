@@ -3,6 +3,171 @@ import { exec, spawn } from 'child_process';
 import http from 'http';
 import { defineConfig, loadEnv, Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
+import { GoogleGenAI } from '@google/genai';
+
+function sttPlugin(apiKey?: string): Plugin {
+  let aiClient: GoogleGenAI | null = null;
+  function getAI() {
+    const key = apiKey || process.env.GEMINI_API_KEY;
+    if (!key) return null;
+    if (!aiClient) {
+      aiClient = new GoogleGenAI({ apiKey: key });
+    }
+    return aiClient;
+  }
+
+  return {
+    name: 'stt-transcribe-service',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        if (!req.url?.startsWith('/api/stt') && !req.url?.startsWith('/api/translate')) {
+          return next();
+        }
+
+        const url = new URL(req.url, 'http://localhost:3000');
+        const pathname = url.pathname;
+
+        res.setHeader('Content-Type', 'application/json');
+
+        if (pathname === '/api/translate' && req.method === 'POST') {
+          let body = '';
+          req.on('data', c => body += c);
+          req.on('end', async () => {
+            try {
+              const data = JSON.parse(body || '{}');
+              const { text, sourceLang, targetLang, medicalMode, topic } = data;
+
+              if (!text) {
+                res.statusCode = 400;
+                return res.end(JSON.stringify({ ok: false, error: 'No text provided' }));
+              }
+
+              const ai = getAI();
+              if (!ai) {
+                res.statusCode = 503;
+                return res.end(JSON.stringify({ ok: false, error: 'GEMINI_API_KEY is not configured.' }));
+              }
+
+              let medicalPrompt = '';
+              if (medicalMode) {
+                medicalPrompt = `You are a medical translator. Use accurate clinical terminology.`;
+              }
+
+              const prompt = `Translate the following text from ${sourceLang} to ${targetLang}.
+Topic: ${topic || 'General'}.
+${medicalPrompt}
+Output ONLY the translated text, nothing else.
+
+Text:
+"${text}"`;
+
+              const result = await ai.models.generateContent({
+                model: 'gemini-3.6-flash',
+                contents: [{ role: 'user', parts: [{ text: prompt }] }]
+              });
+              
+              const translatedText = result.text?.trim() || '';
+              res.end(JSON.stringify({ ok: true, text: translatedText }));
+            } catch (err: any) {
+              console.error('Translation API error:', err);
+              res.statusCode = 500;
+              res.end(JSON.stringify({ ok: false, error: err?.message || 'Failed to translate text' }));
+            }
+          });
+          return;
+        }
+
+        if (pathname === '/api/stt/health') {
+          return res.end(JSON.stringify({
+            ok: true,
+            hasKey: !!(apiKey || process.env.GEMINI_API_KEY),
+            engine: 'gemini-3.6-flash',
+            sampleRate: 16000
+          }));
+        }
+
+        if (pathname === '/api/stt/transcribe' && req.method === 'POST') {
+          let body = '';
+          req.on('data', c => body += c);
+          req.on('end', async () => {
+            try {
+              const data = JSON.parse(body || '{}');
+              const audioBase64 = data.audio;
+              const mimeType = data.mimeType || 'audio/wav';
+              const languageHint = data.languageHint || 'Dutch (Flemish) or English';
+
+              if (!audioBase64) {
+                res.statusCode = 400;
+                return res.end(JSON.stringify({ ok: false, error: 'No audio data received' }));
+              }
+
+              const ai = getAI();
+              if (!ai) {
+                res.statusCode = 503;
+                return res.end(JSON.stringify({ ok: false, error: 'GEMINI_API_KEY is not configured on the server.' }));
+              }
+
+              const promptText = `You are a real-time speech-to-text transcriber for a dual-language hospital / clinic translator.
+The speaker is speaking either ${languageHint}.
+Transcribe the speech with exact verbatim accuracy.
+Rules:
+1. Return ONLY the verbatim transcribed words spoken in the audio.
+2. If the audio is silence, breathing, background noise, or unintelligible, return an empty string "".
+3. Do not add quotes, commentary, or punctuation labels.`;
+
+              let resultText = '';
+              const modelsToTry = ['gemini-3.6-flash', 'gemini-3.8-flash'];
+              let lastErr = null;
+
+              for (const modelName of modelsToTry) {
+                try {
+                  const result = await ai.models.generateContent({
+                    model: modelName,
+                    contents: [
+                      {
+                        role: 'user',
+                        parts: [
+                          {
+                            inlineData: {
+                              mimeType: mimeType,
+                              data: audioBase64
+                            }
+                          },
+                          {
+                            text: promptText
+                          }
+                        ]
+                      }
+                    ]
+                  });
+                  resultText = result.text?.trim().replace(/^["']|["']$/g, '') || '';
+                  lastErr = null;
+                  break;
+                } catch (e: any) {
+                  lastErr = e;
+                }
+              }
+
+              if (lastErr && !resultText) {
+                throw lastErr;
+              }
+
+              res.end(JSON.stringify({ ok: true, text: resultText }));
+            } catch (err: any) {
+              console.error('STT Transcribe API error:', err);
+              res.statusCode = 500;
+              res.end(JSON.stringify({ ok: false, error: err?.message || 'Failed to transcribe audio' }));
+            }
+          });
+          return;
+        }
+
+        res.statusCode = 404;
+        res.end(JSON.stringify({ error: 'Endpoint not found' }));
+      });
+    }
+  };
+}
 
 function ollamaManagerPlugin(): Plugin {
   let isInstalling = false;
@@ -200,7 +365,7 @@ export default defineConfig(({ mode }) => {
           },
         },
       },
-      plugins: [react(), ollamaManagerPlugin()],
+      plugins: [react(), ollamaManagerPlugin(), sttPlugin(env.GEMINI_API_KEY)],
       define: {
         'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
       },

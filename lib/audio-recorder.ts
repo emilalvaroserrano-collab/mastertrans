@@ -110,6 +110,7 @@ export class AudioRecorder {
           const arrayBufferString = arrayBufferToBase64(arrayBuffer);
           // FIX: Changed this.emit to this.emitter.emit
           this.emitter.emit('data', arrayBufferString);
+          this.emitter.emit('rawChunk', new Int16Array(arrayBuffer.slice(0)));
         }
       };
       compressor.connect(this.recordingWorklet);

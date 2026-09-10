@@ -27,6 +27,7 @@ import { useLogStore } from '../../../lib/state';
 import { useAuth, clearUserConversations } from '../../../lib/auth';
 import { useVAD } from '../../../hooks/use-vad';
 import { useLiveAPIContext } from '../../../contexts/LiveAPIContext';
+import { localSTT } from '../../../lib/local-stt';
 import MicVisualizer from '../../MicVisualizer';
 
 export type ControlTrayProps = {
@@ -40,7 +41,19 @@ function ControlTray({ children }: ControlTrayProps) {
   const isSpeaking = useVAD(audioRecorder);
   const connectButtonRef = useRef<HTMLButtonElement>(null);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [testInput, setTestInput] = useState('');
+  const [sttState, setSttState] = useState<{ engine: string; isSpeaking: boolean; isRunning: boolean }>({
+    engine: localSTT.engine,
+    isSpeaking: false,
+    isRunning: false,
+  });
   const { session, user } = useAuth();
+
+  useEffect(() => {
+    localSTT.setStatusCallback((status) => {
+      setSttState(status);
+    });
+  }, []);
 
   const {
     client,
@@ -87,12 +100,16 @@ function ControlTray({ children }: ControlTrayProps) {
         },
       ]);
     };
+    const onRawChunk = (samples: Int16Array) => {
+      localSTT.feedRawChunk(samples);
+    };
     const onVolume = (vol: number) => {
       setMicVolume(vol);
     };
 
     if (connected && !muted && audioRecorder) {
       audioRecorder.on('data', onData);
+      audioRecorder.on('rawChunk', onRawChunk);
       audioRecorder.on('volume', onVolume);
       audioRecorder.start();
     } else {
@@ -101,6 +118,7 @@ function ControlTray({ children }: ControlTrayProps) {
     }
     return () => {
       audioRecorder.off('data', onData);
+      audioRecorder.off('rawChunk', onRawChunk);
       audioRecorder.off('volume', onVolume);
     };
   }, [connected, client, muted, audioRecorder]);
@@ -158,6 +176,25 @@ function ControlTray({ children }: ControlTrayProps) {
 
   return (
     <section className="control-tray">
+      {/* Realtime STT Engine Status Pill */}
+      <div className="flex items-center justify-center gap-2 mb-2 text-xs">
+        <span
+          className={cn('w-2 h-2 rounded-full transition-colors', {
+            'bg-emerald-400 animate-pulse': sttState.isSpeaking,
+            'bg-blue-400': connected && !sttState.isSpeaking,
+            'bg-gray-500': !connected,
+          })}
+        />
+        <span className="text-gray-400 font-medium">
+          STT Engine: <strong className="text-gray-200">{sttState.engine}</strong>
+          {sttState.isSpeaking
+            ? ' • 🎙️ Speech Detected'
+            : connected
+            ? ' • Ready'
+            : ' • Offline'}
+        </span>
+      </div>
+
       <MicVisualizer volume={micVolume} isActive={isMicActive} />
       <div className="control-tray-buttons">
         <nav className={cn('actions-nav')}>
@@ -209,6 +246,36 @@ function ControlTray({ children }: ControlTrayProps) {
           </div>
           <span className="text-indicator">{isConnecting ? 'Connecting...' : 'Streaming'}</span>
         </div>
+      </div>
+
+      {/* Direct Speech / Phrase Quick Test Bar */}
+      <div className="quick-speech-test flex items-center gap-2 mt-3 px-3 py-1.5 rounded-lg bg-gray-900/80 border border-gray-800 text-xs w-full max-w-md mx-auto shadow-sm">
+        <span className="text-gray-400 font-medium whitespace-nowrap">Test Speech:</span>
+        <input
+          type="text"
+          placeholder="Type phrase (e.g. 'Hallo dokter, ik heb buikpijn')..."
+          className="flex-1 bg-transparent text-gray-200 focus:outline-none placeholder:text-gray-600 text-xs"
+          value={testInput}
+          onChange={(e) => setTestInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && testInput.trim()) {
+              localSTT.submitDirectSpeech(testInput.trim());
+              setTestInput('');
+            }
+          }}
+        />
+        <button
+          onClick={() => {
+            if (testInput.trim()) {
+              localSTT.submitDirectSpeech(testInput.trim());
+              setTestInput('');
+            }
+          }}
+          disabled={!testInput.trim()}
+          className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium text-xs transition-colors"
+        >
+          Send
+        </button>
       </div>
     </section>
   );

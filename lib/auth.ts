@@ -7,10 +7,13 @@ import { createClient } from '@supabase/supabase-js';
 import { create } from 'zustand';
 import { ConversationTurn } from './state';
 
-const SUPABASE_URL = 'https://gkaszpjcfdkehoivihju.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdrYXN6cGpjZmRrZWhvaXZpaGp1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTk3MjQwMjMsImV4cCI6MjA3NTMwMDAyM30.u0dxNr1LbH31OmlT7KzloKI6V_k-8uWOCslg3PE9UYw';
+// Supabase configuration - only initialize if valid environment variables are provided
+const envSupabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const envSupabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+const supabase = (envSupabaseUrl && envSupabaseKey) 
+  ? createClient(envSupabaseUrl, envSupabaseKey) 
+  : null;
 
 // --- AUTH STORE ---
 interface AuthState {
@@ -39,36 +42,82 @@ export const useAuth = create<AuthState>(() => ({
 
 // --- DATABASE HELPERS ---
 export const updateUserSettings = async (userId: string, newSettings: Partial<{ systemPrompt: string; voice: string }>) => {
-  const { error } = await supabase
-    .from('user_settings')
-    .upsert({ user_id: userId, ...newSettings });
-  if (error) console.error('Error saving settings:', error);
+  try {
+    const storageKey = `eburon_settings_${userId}`;
+    const existing = localStorage.getItem(storageKey);
+    const merged = { ...(existing ? JSON.parse(existing) : {}), ...newSettings };
+    localStorage.setItem(storageKey, JSON.stringify(merged));
+  } catch {
+    // Local storage fallback
+  }
+
+  if (supabase) {
+    try {
+      await supabase
+        .from('user_settings')
+        .upsert({ user_id: userId, ...newSettings });
+    } catch {
+      // Gracefully ignore remote sync failures
+    }
+  }
   return Promise.resolve();
 };
 
 export const updateUserConversations = async (userId: string, turns: ConversationTurn[]) => {
-  // FIX: Replaced .at(-1) with standard index access to resolve "Property 'at' does not exist" error.
   const lastTurn = turns[turns.length - 1];
   if (!lastTurn || !lastTurn.isFinal) return;
 
-  const { error } = await supabase
-    .from('translations')
-    .insert({
-      user_id: userId,
+  // Persist locally in localStorage
+  try {
+    const storageKey = `eburon_turns_${userId}`;
+    const saved = localStorage.getItem(storageKey);
+    const history = saved ? JSON.parse(saved) : [];
+    history.push({
       role: lastTurn.role,
       text: lastTurn.text,
-      timestamp: lastTurn.timestamp.toISOString(),
+      translation: lastTurn.translation,
+      transcription: lastTurn.transcription,
+      timestamp: lastTurn.timestamp instanceof Date ? lastTurn.timestamp.toISOString() : new Date().toISOString(),
     });
+    // Keep last 100 turns
+    if (history.length > 100) history.shift();
+    localStorage.setItem(storageKey, JSON.stringify(history));
+  } catch {
+    // Local storage fallback
+  }
 
-  if (error) {
-    console.error('Error saving turn to Supabase:', error);
+  // Attempt optional remote sync if Supabase is configured
+  if (supabase) {
+    try {
+      await supabase
+        .from('translations')
+        .insert({
+          user_id: userId,
+          role: lastTurn.role,
+          text: lastTurn.text,
+          timestamp: lastTurn.timestamp instanceof Date ? lastTurn.timestamp.toISOString() : new Date().toISOString(),
+        });
+    } catch {
+      // Gracefully ignore remote sync failures
+    }
   }
 };
 
 export const clearUserConversations = async (userId: string) => {
-  const { error } = await supabase
-    .from('translations')
-    .delete()
-    .eq('user_id', userId);
-  if (error) console.error('Error clearing history:', error);
+  try {
+    localStorage.removeItem(`eburon_turns_${userId}`);
+  } catch {
+    // Local storage fallback
+  }
+
+  if (supabase) {
+    try {
+      await supabase
+        .from('translations')
+        .delete()
+        .eq('user_id', userId);
+    } catch {
+      // Gracefully ignore remote deletion failures
+    }
+  }
 };

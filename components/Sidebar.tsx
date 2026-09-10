@@ -30,10 +30,31 @@ export default function Sidebar() {
   const [testStatus, setTestStatus] = useState<string | null>(null);
   const [testingOllama, setTestingOllama] = useState(false);
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+  const previewAudioCtxRef = React.useRef<AudioContext | null>(null);
+
+  // Stop preview if sidebar is closed or unmounted
+  React.useEffect(() => {
+    if (!isSidebarOpen && isPlayingPreview) {
+      supertonicTTS.cancel();
+      if (previewAudioCtxRef.current) {
+        try {
+          previewAudioCtxRef.current.close();
+        } catch {}
+        previewAudioCtxRef.current = null;
+      }
+      setIsPlayingPreview(false);
+    }
+  }, [isSidebarOpen, isPlayingPreview]);
 
   const handlePreviewVoice = async () => {
     if (isPlayingPreview) {
       supertonicTTS.cancel();
+      if (previewAudioCtxRef.current) {
+        try {
+          previewAudioCtxRef.current.close();
+        } catch {}
+        previewAudioCtxRef.current = null;
+      }
       setIsPlayingPreview(false);
       return;
     }
@@ -47,15 +68,51 @@ export default function Sidebar() {
       ? 'Goedendag! Dit is een voorbeeld van Supertonic 3 met het gekozen prosodieprofiel.'
       : 'Hello! This is a voice sample of Supertonic 3 with your selected prosody profile.';
 
+    const pcmChunks: ArrayBuffer[] = [];
+
     try {
       await supertonicTTS.synthesizeStream(
         samplePhrase,
         language1,
-        () => {},
+        (chunk) => {
+          pcmChunks.push(chunk);
+        },
         () => {
           setIsPlayingPreview(false);
         }
       );
+
+      // If SpeechSynthesis is unavailable or silent in this browser environment, play PCM directly via Web Audio
+      if (typeof window !== 'undefined' && (!('speechSynthesis' in window) || window.speechSynthesis.getVoices().length === 0) && pcmChunks.length > 0) {
+        try {
+          const totalLength = pcmChunks.reduce((acc, c) => acc + c.byteLength, 0);
+          const numSamples = totalLength / 2;
+          const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+          if (AudioContextClass) {
+            const audioCtx = new AudioContextClass({ sampleRate: 24000 });
+            previewAudioCtxRef.current = audioCtx;
+            const audioBuffer = audioCtx.createBuffer(1, numSamples, 24000);
+            const channelData = audioBuffer.getChannelData(0);
+            let offset = 0;
+            for (const chunk of pcmChunks) {
+              const view = new DataView(chunk);
+              const count = chunk.byteLength / 2;
+              for (let i = 0; i < count; i++) {
+                channelData[offset++] = view.getInt16(i * 2, true) / 32768.0;
+              }
+            }
+            const src = audioCtx.createBufferSource();
+            src.buffer = audioBuffer;
+            src.connect(audioCtx.destination);
+            src.onended = () => {
+              setIsPlayingPreview(false);
+            };
+            src.start();
+          }
+        } catch {
+          setIsPlayingPreview(false);
+        }
+      }
     } catch (err) {
       console.warn('Voice preview error:', err);
       setIsPlayingPreview(false);
@@ -171,43 +228,68 @@ export default function Sidebar() {
 
             <div className="flex flex-col gap-3 p-3 rounded-lg bg-gray-900/60 border border-gray-800/80">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-blue-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <span className="icon text-sm">graphic_eq</span> Supertonic 3 TTS
-                </span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 font-mono">
-                  24kHz Audio
+                <span className="text-xs font-semibold text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <span className="icon text-sm">record_voice_over</span> Voice Settings
                 </span>
               </div>
 
-              <label>
-                Voice Profile
-                <select
-                  value={voice}
-                  onChange={e => setVoice(e.target.value)}
-                >
-                  <optgroup label="Female Voices (F1–F5)">
-                    {AVAILABLE_VOICES.filter(v => v.gender === 'female').map(v => (
-                      <option key={v.value} value={v.value}>
-                        {v.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Male Voices (M1–M5)">
-                    {AVAILABLE_VOICES.filter(v => v.gender === 'male').map(v => (
-                      <option key={v.value} value={v.value}>
-                        {v.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="Legacy Voice Compatibility">
-                    {AVAILABLE_VOICES.filter(v => !v.gender).map(v => (
-                      <option key={v.value} value={v.value}>
-                        {v.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                </select>
-              </label>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center justify-between">
+                  <label htmlFor="supertonic-voice-select" className="text-xs text-gray-300 font-medium">
+                    Voice Profile
+                  </label>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    id="supertonic-voice-select"
+                    value={voice}
+                    onChange={e => setVoice(e.target.value)}
+                    className="flex-1 text-xs"
+                  >
+                    <optgroup label="Female Voices (F1–F5)">
+                      {AVAILABLE_VOICES.filter(v => v.gender === 'female').map(v => (
+                        <option key={v.value} value={v.value}>
+                          {v.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Male Voices (M1–M5)">
+                      {AVAILABLE_VOICES.filter(v => v.gender === 'male').map(v => (
+                        <option key={v.value} value={v.value}>
+                          {v.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="Legacy Voice Compatibility">
+                      {AVAILABLE_VOICES.filter(v => !v.gender).map(v => (
+                        <option key={v.value} value={v.value}>
+                          {v.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+                  <button
+                    id="play-sample-voice-button"
+                    type="button"
+                    onClick={handlePreviewVoice}
+                    disabled={connected}
+                    aria-label={isPlayingPreview ? "Stop audio sample" : "Play sample of selected voice and prosody"}
+                    title={isPlayingPreview ? "Stop audio sample" : `Play sample with ${voice} and ${prosodyProfile} prosody`}
+                    className={`shrink-0 flex items-center justify-center gap-1.5 px-3 py-2 rounded text-xs font-semibold transition-all shadow-sm ${
+                      isPlayingPreview
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 animate-pulse'
+                        : 'bg-blue-600 hover:bg-blue-500 text-white active:scale-95'
+                    } disabled:opacity-40 disabled:cursor-not-allowed`}
+                  >
+                    <span className="icon text-sm leading-none">
+                      {isPlayingPreview ? 'stop' : 'play_arrow'}
+                    </span>
+                    <span className="whitespace-nowrap">
+                      {isPlayingPreview ? 'Stop' : 'Play Sample'}
+                    </span>
+                  </button>
+                </div>
+              </div>
 
               <label>
                 Prosody Profile
@@ -222,32 +304,6 @@ export default function Sidebar() {
                   ))}
                 </select>
               </label>
-
-              <div className="p-2.5 rounded bg-gray-800/60 border border-gray-700/60 text-xs text-gray-300 flex flex-col gap-1.5">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-gray-400 font-medium">Style Dynamics:</span>
-                  <span className="font-semibold text-blue-300">
-                    {AVAILABLE_PROSODY_PROFILES.find(p => p.value === prosodyProfile)?.category || 'Standard'}
-                  </span>
-                </div>
-                <p className="text-[11px] text-gray-400 leading-snug">
-                  {AVAILABLE_PROSODY_PROFILES.find(p => p.value === prosodyProfile)?.description}
-                </p>
-
-                <button
-                  type="button"
-                  onClick={handlePreviewVoice}
-                  disabled={connected}
-                  className={`mt-1 text-xs py-1.5 px-3 rounded flex items-center justify-center gap-1.5 transition-colors font-medium ${
-                    isPlayingPreview
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30'
-                      : 'bg-blue-600/80 hover:bg-blue-600 text-white'
-                  }`}
-                >
-                  <span className="icon text-sm">{isPlayingPreview ? 'stop' : 'volume_up'}</span>
-                  <span>{isPlayingPreview ? 'Stop Sample' : 'Preview Voice & Prosody'}</span>
-                </button>
-              </div>
             </div>
 
             <div className="flex flex-col gap-2 mt-4">
@@ -277,51 +333,6 @@ export default function Sidebar() {
               
               {/* Automated Ollama Server & Model Auto-Installer Card */}
               <OllamaAutoInstallCard />
-
-              <label className="mt-2">
-                Ollama Endpoint (Advanced)
-                <input
-                  type="text"
-                  value={ollamaEndpoint}
-                  onChange={e => setOllamaEndpoint(e.target.value)}
-                  placeholder="http://localhost:11434"
-                  className="w-full text-xs p-1.5 rounded bg-gray-900 border border-gray-700"
-                />
-              </label>
-
-              <label>
-                Local LLM Model
-                <input
-                  type="text"
-                  value={model}
-                  onChange={e => setModel(e.target.value)}
-                  placeholder="gemma3:1b"
-                  className="w-full text-xs p-1.5 rounded bg-gray-900 border border-gray-700"
-                />
-                <span className="text-[10px] text-gray-400 mt-0.5 block">Recommended: gemma3:1b (mobile-ready, ~850MB)</span>
-              </label>
-
-              <div className="flex flex-col gap-1 mt-1">
-                <button
-                  type="button"
-                  onClick={handleTestOllama}
-                  disabled={testingOllama}
-                  className="text-xs px-2.5 py-1.5 rounded bg-blue-600/80 hover:bg-blue-600 text-white transition-colors"
-                >
-                  {testingOllama ? 'Connecting...' : 'Test Ollama Connection'}
-                </button>
-                {testStatus && (
-                  <span className={`text-[11px] mt-1 leading-snug ${testStatus.includes('Connected') ? 'text-green-400' : 'text-amber-400'}`}>
-                    {testStatus}
-                  </span>
-                )}
-              </div>
-
-              <div className="text-[11px] text-gray-400 mt-2 p-2 rounded bg-gray-800/40 border border-gray-700/50">
-                <div>⚡ <strong>Local STT:</strong> Multilingual Realtime Detection (10+ languages)</div>
-                <div className="mt-1">🧠 <strong>LLM:</strong> Gemma 3 1B on Ollama (Local Edge)</div>
-                <div className="mt-1">🗣️ <strong>TTS:</strong> Supertonic 3 (Dutch Flemish Prosody)</div>
-              </div>
             </div>
           </fieldset>
           <button
