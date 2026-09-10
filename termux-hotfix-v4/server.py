@@ -179,13 +179,32 @@ async def live(ws:WebSocket):
         try: await ws.send_json({"type":"error","message":str(e)})
         except Exception: pass
 
-async def static(request:Request):
-    path=request.path_params.get("path","") or "index.html"
-    candidate=(PUBLIC/path).resolve()
+def safe_public(rel:str):
     pub=PUBLIC.resolve()
-    if candidate!=pub and pub not in candidate.parents: return Response("Not found",status_code=404)
-    if not candidate.is_file(): candidate=PUBLIC/"index.html"
-    return FileResponse(candidate,media_type=mimetypes.guess_type(candidate.name)[0])
+    candidate=(PUBLIC/rel).resolve()
+    if candidate!=pub and pub not in candidate.parents:
+        return None
+    return candidate
+
+async def static_asset(request:Request):
+    rel=request.path_params.get("path","")
+    candidate=safe_public(rel)
+    if not candidate or not candidate.is_file():
+        return Response("Not found",status_code=404)
+    return FileResponse(candidate,media_type=mimetypes.guess_type(candidate.name)[0] or "application/octet-stream")
+
+async def root_page(request:Request):
+    return FileResponse(PUBLIC/"index.html",media_type="text/html")
+
+async def settings_page(request:Request):
+    return FileResponse(PUBLIC/"settings.html",media_type="text/html")
+
+async def public_file(request:Request):
+    rel=request.path_params.get("path","")
+    candidate=safe_public(rel)
+    if candidate and candidate.is_file():
+        return FileResponse(candidate,media_type=mimetypes.guess_type(candidate.name)[0] or "application/octet-stream")
+    return Response("Not found",status_code=404)
 
 app=Starlette(routes=[
     Route("/health",health),
@@ -195,5 +214,8 @@ app=Starlette(routes=[
     Route("/v1/audio/transcriptions",transcribe,methods=["POST"]),
     Route("/v1/audio/speech",speech,methods=["POST"]),
     WebSocketRoute("/ws/live",live),
-    Route("/{path:path}",static),
+    Route("/",root_page),
+    Route("/settings.html",settings_page),
+    Route("/static/{path:path}",static_asset),
+    Route("/{path:path}",public_file),
 ],lifespan=lifespan)
