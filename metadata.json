@@ -1,0 +1,8 @@
+{
+  "name": "Remix Eburon AI Translator 2",
+  "description": "Real-time dual translation powered by Eburon AI",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": []
+}
