@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO="emilalvaroserrano-collab/mastertrans"
 BRANCH="main"
-VERSION="v0.1.0"
+VERSION="v0.1.0-r4"
 PACKAGE="eburon-edge-termux-tablet-mvp-v0.1.0.zip"
 PACKAGE_SHA256="1a4b71f593f5025d47c3db1b515a7415649c73725a405993fef6a99cc6aae658"
 RAW_BASE="https://raw.githubusercontent.com/${REPO}/${BRANCH}/dist"
@@ -36,7 +36,7 @@ pkg install -y curl unzip coreutils
 blue "Downloading Eburon Edge package..."
 : > "$TMP_DIR/package.b64"
 for part in 00 01 02 03 04 05; do
-  curl -fL --retry 6 --retry-delay 2 --retry-all-errors \
+  curl -fLsS --retry 6 --retry-delay 2 --retry-all-errors \
     "${RAW_BASE}/${PACKAGE}.b64.${part}" \
     >> "$TMP_DIR/package.b64"
 done
@@ -51,10 +51,10 @@ PAYLOAD_INSTALL="$TMP_DIR/payload/eburon-edge-termux/install.sh"
 [ -f "$PAYLOAD_INSTALL" ] || { red "Installer payload is missing."; exit 2; }
 chmod +x "$PAYLOAD_INSTALL"
 
-blue "Applying Android/Python compatibility hotfix v3..."
+blue "Applying production Termux compatibility layer v4..."
 HOTFIX="$TMP_DIR/apply-hotfix.sh"
 curl -fsSL --retry 6 --retry-delay 2 --retry-all-errors \
-  "https://raw.githubusercontent.com/${REPO}/${BRANCH}/termux-hotfix-v3/apply.sh" -o "$HOTFIX"
+  "https://raw.githubusercontent.com/${REPO}/${BRANCH}/termux-hotfix-v4/apply.sh" -o "$HOTFIX"
 chmod +x "$HOTFIX"
 bash "$HOTFIX" "$TMP_DIR/payload/eburon-edge-termux"
 
