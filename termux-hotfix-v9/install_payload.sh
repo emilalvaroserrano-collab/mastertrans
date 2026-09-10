@@ -77,10 +77,21 @@ PYTTS
 blue '[5/7] Piper catalog + local default voice packs'
 PIPER_ROOT="$ROOT/models/piper"; mkdir -p "$PIPER_ROOT/voices"
 curl -fLsS --retry 6 --retry-delay 2 --retry-all-errors   "https://huggingface.co/rhasspy/piper-voices/resolve/main/voices.json?download=true" -o "$PIPER_ROOT/voices.json"
-if "$ROOT/venv-gateway/bin/pip" install -q piper-tts >/dev/null 2>"$ROOT/logs/piper-install.log"; then
-  echo '  ✓ Piper runtime installed'
+PIPER_DEB="$ROOT/logs/piper-tts-cli-1.2.deb"
+if ! command -v piper >/dev/null 2>&1; then
+  pkg install -y espeak >/dev/null 2>&1 || true
+  if curl -fLsS --retry 6 --retry-delay 2 --retry-all-errors     "https://github.com/gyroing/piper-tts-for-termux/releases/download/v1.2-android-termux/piper-tts-cli-1.2.deb" -o "$PIPER_DEB"; then
+    printf '%s  %s\n' "ebde80d388bf11df0dfc0fe55d09a0263a286b4d81dfb387c5f90d023c8c812f" "$PIPER_DEB" | sha256sum -c - >/dev/null
+    if apt install -y "$PIPER_DEB" >"$ROOT/logs/piper-install.log" 2>&1; then
+      echo '  ✓ Piper Android/Termux runtime installed'
+    else
+      warn '  ! Piper Android package install failed; catalog remains available and Supertonic stays default.'
+    fi
+  else
+    warn '  ! Piper Android package download failed; catalog remains available.'
+  fi
 else
-  warn '  ! Piper runtime could not be installed on this Android build; catalog remains available and Supertonic stays default.'
+  echo '  ✓ Piper runtime already installed'
 fi
 PIPER_HF="https://huggingface.co/rhasspy/piper-voices/resolve/main"
 download_piper(){ local rel="$1"; local dest="$PIPER_ROOT/voices/$rel"; [ -s "$dest" ] && return 0; mkdir -p "$(dirname "$dest")"; curl -fLsS --retry 6 --retry-delay 2 --retry-all-errors "$PIPER_HF/$rel?download=true" -o "$dest.part"; mv "$dest.part" "$dest"; }
