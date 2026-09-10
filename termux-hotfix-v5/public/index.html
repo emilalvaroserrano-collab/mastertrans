@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#1d1f20" />
+  <title>Eburon Translator</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <main class="app-shell" id="app">
+    <header class="topbar">
+      <div class="brand" aria-hidden="true"></div>
+      <button id="settingsBtn" class="icon-btn settings-btn" aria-label="Open settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h10M18 6h2M10 6a2 2 0 1 0-4 0 2 2 0 0 0 4 0ZM4 12h2M10 12h10M16 12a2 2 0 1 0-4 0 2 2 0 0 0 4 0ZM4 18h10M18 18h2M10 18a2 2 0 1 0-4 0 2 2 0 0 0 4 0Z"/></svg>
+      </button>
+    </header>
+
+    <section id="transcriptPane" class="transcript-pane" aria-live="polite">
+      <div id="sourceBubble" class="speech-block source-block hidden"></div>
+      <div id="translationBubble" class="speech-block translation-block hidden"></div>
+    </section>
+
+    <section class="controls-area">
+      <div id="waveform" class="waveform hidden" aria-hidden="true"></div>
+      <div class="controls-row">
+        <div class="control-cluster">
+          <button id="micBtn" class="round-btn" aria-label="Microphone">
+            <svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0M12 17v4M8 21h8"/></svg>
+          </button>
+          <button id="speakerBtn" class="round-btn" aria-label="Replay translation">
+            <svg viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6L8 10H4Zm12-2a5 5 0 0 1 0 8m2-10a8 8 0 0 1 0 12"/></svg>
+          </button>
+          <button id="resetBtn" class="round-btn" aria-label="Reset conversation">
+            <svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.34-5.66L20 8M20 4v4h-4"/></svg>
+          </button>
+        </div>
+        <div class="play-wrap">
+          <button id="playBtn" class="play-btn" aria-label="Start streaming">
+            <span id="playIcon" class="play-shape"></span>
+            <span id="pauseIcon" class="pause-shape hidden"><i></i><i></i></span>
+          </button>
+          <div id="streamLabel" class="stream-label hidden">Streaming</div>
+        </div>
+      </div>
+      <div id="statusLine" class="status-line">Ready</div>
+    </section>
+
+    <aside id="settingsPanel" class="settings-panel" aria-hidden="true">
+      <div class="settings-sheet">
+        <div class="settings-header">
+          <h1>Settings</h1>
+          <button id="closeSettingsBtn" class="close-btn" aria-label="Close settings">×</button>
+        </div>
+        <div class="settings-content">
+          <label class="field-label" for="staffLanguage">Staff Language (Language 1)</label>
+          <select id="staffLanguage" class="field-select"></select>
+
+          <label class="field-label" for="guestLanguage">Guest Language (Language 2)</label>
+          <select id="guestLanguage" class="field-select"></select>
+
+          <label class="check-row"><input id="autoDetectGuest" type="checkbox" /><span>Auto-detect Guest Language</span></label>
+
+          <label class="field-label" for="voiceSelect">AI Voice</label>
+          <select id="voiceSelect" class="field-select"></select>
+
+          <div class="section-label">TRANSLATION MODE</div>
+          <label class="check-row"><input id="medicalMode" name="translationMode" type="radio" value="medical" /><span>Medical Terms</span></label>
+          <label class="check-row"><input id="generalMode" name="translationMode" type="radio" value="general" /><span>General</span></label>
+
+          <button id="saveSettingsBtn" class="save-btn">Save Settings</button>
+
+          <div class="history-head">
+            <h2>TRANSLATION HISTORY</h2>
+            <div class="history-actions">
+              <button id="exportHistoryBtn">Export</button>
+              <button id="clearHistoryBtn">Clear</button>
+            </div>
+          </div>
+          <div id="historyList" class="history-list"></div>
+          <div class="system-card">
+            <div><span>Local AI</span><strong id="localAiState">Checking…</strong></div>
+            <div><span>Gateway</span><strong>127.0.0.1:8850</strong></div>
+            <div><span>Runtime</span><strong>Offline</strong></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <div id="toast" class="toast hidden"></div>
+  </main>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
