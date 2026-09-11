@@ -46,7 +46,7 @@ cp "$ROOT/gateway/translator_server.mjs" "$ROOT/translator-server/server.mjs"
 cat >"$ROOT/translator-server/package.json" <<'JSON'
 {"type":"module","private":true,"dependencies":{"@huggingface/transformers":"4.2.0"}}
 JSON
-if ! (cd "$ROOT/translator-server" && npm install --ignore-scripts --omit=optional --no-audit --no-fund) >"$ROOT/logs/translator-install.log" 2>&1; then
+if ! (cd "$ROOT/translator-server" && npm install --force --ignore-scripts --omit=optional --no-audit --no-fund) >"$ROOT/logs/translator-install.log" 2>&1; then
   red 'Transformers.js install failed. Last log lines:'
   tail -n 60 "$ROOT/logs/translator-install.log" || true
   exit 1
