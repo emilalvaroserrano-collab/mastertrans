@@ -46,7 +46,12 @@ cp "$ROOT/gateway/translator_server.mjs" "$ROOT/translator-server/server.mjs"
 cat >"$ROOT/translator-server/package.json" <<'JSON'
 {"type":"module","private":true,"dependencies":{"@huggingface/transformers":"4.2.0"}}
 JSON
-(cd "$ROOT/translator-server" && npm install --silent --no-audit --no-fund)
+if ! (cd "$ROOT/translator-server" && npm install --ignore-scripts --omit=optional --no-audit --no-fund) >"$ROOT/logs/translator-install.log" 2>&1; then
+  red 'Transformers.js install failed. Last log lines:'
+  tail -n 60 "$ROOT/logs/translator-install.log" || true
+  exit 1
+fi
+echo '  ✓ Transformers.js web/WASM runtime installed'
 if (cd "$ROOT/translator-server" && EBURON_TRANSLATOR_CACHE="$ROOT/models/m2m100-cache" EBURON_OFFLINE=0 timeout 420 node --input-type=module <<'JS'
 import { env, pipeline } from "./node_modules/@huggingface/transformers/dist/transformers.web.js";
 import path from "node:path";
@@ -105,20 +110,13 @@ blue '[6/8] Piper catalog + local default voice packs'
 PIPER_ROOT="$ROOT/models/piper"; mkdir -p "$PIPER_ROOT/voices"
 curl -fLsS --retry 6 --retry-delay 2 --retry-all-errors   "https://huggingface.co/rhasspy/piper-voices/resolve/main/voices.json?download=true" -o "$PIPER_ROOT/voices.json"
 PIPER_DEB="$ROOT/logs/piper-tts-cli-1.2.deb"
-if ! command -v piper >/dev/null 2>&1; then
-  pkg install -y espeak >/dev/null 2>&1 || true
-  if curl -fLsS --retry 6 --retry-delay 2 --retry-all-errors     "https://github.com/gyroing/piper-tts-for-termux/releases/download/v1.2-android-termux/piper-tts-cli-1.2.deb" -o "$PIPER_DEB"; then
-    printf '%s  %s\n' "ebde80d388bf11df0dfc0fe55d09a0263a286b4d81dfb387c5f90d023c8c812f" "$PIPER_DEB" | sha256sum -c - >/dev/null
-    if apt install -y "$PIPER_DEB" >"$ROOT/logs/piper-install.log" 2>&1; then
-      echo '  ✓ Piper Android/Termux runtime installed'
-    else
-      warn '  ! Piper Android package install failed; catalog remains available and Supertonic stays default.'
-    fi
-  else
-    warn '  ! Piper Android package download failed; catalog remains available.'
-  fi
-else
+# Do not install the third-party Piper .deb into the global Termux prefix:
+# it bundles libonnxruntime.so and conflicts with Termux python-onnxruntime used by Supertonic.
+if command -v piper >/dev/null 2>&1; then
   echo '  ✓ Piper runtime already installed'
+else
+  warn '  ! Piper native runtime deferred: global .deb would overwrite Termux ONNX Runtime.'
+  warn '    Voice catalog/default packs are kept; Supertonic remains the safe default.'
 fi
 PIPER_HF="https://huggingface.co/rhasspy/piper-voices/resolve/main"
 download_piper(){ local rel="$1"; local dest="$PIPER_ROOT/voices/$rel"; [ -s "$dest" ] && return 0; mkdir -p "$(dirname "$dest")"; curl -fLsS --retry 6 --retry-delay 2 --retry-all-errors "$PIPER_HF/$rel?download=true" -o "$dest.part"; mv "$dest.part" "$dest"; }
