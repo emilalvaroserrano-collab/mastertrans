@@ -3,8 +3,8 @@ set -euo pipefail
 
 REPO="emilalvaroserrano-collab/mastertrans"
 BRANCH="main"
-HOTFIX_REF="ab48607e1711eb6935f6a6d03413fdf486456e8c"
-VERSION="v0.1.0-r9.3"
+HOTFIX_REF="2cf3877e837eb6a81350bc6504291e79918441d3"
+VERSION="v0.1.0-r10"
 PACKAGE="eburon-edge-termux-tablet-mvp-v0.1.0.zip"
 PACKAGE_SHA256="1a4b71f593f5025d47c3db1b515a7415649c73725a405993fef6a99cc6aae658"
 RAW_BASE="https://raw.githubusercontent.com/${REPO}/${BRANCH}/dist"
@@ -52,10 +52,10 @@ PAYLOAD_INSTALL="$TMP_DIR/payload/eburon-edge-termux/install.sh"
 [ -f "$PAYLOAD_INSTALL" ] || { red "Installer payload is missing."; exit 2; }
 chmod +x "$PAYLOAD_INSTALL"
 
-blue "Applying provider-aware realtime translator + multi-TTS layer v9..."
+blue "Applying low-latency translation-only engine + multi-TTS layer v10..."
 HOTFIX="$TMP_DIR/apply-hotfix.sh"
 curl -fLsS --retry 6 --retry-delay 2 --retry-all-errors \
-  "https://raw.githubusercontent.com/${REPO}/${HOTFIX_REF}/termux-hotfix-v9/apply.sh?cb=${VERSION}" -o "$HOTFIX"
+  "https://raw.githubusercontent.com/${REPO}/${HOTFIX_REF}/termux-hotfix-v10/apply.sh?cb=${VERSION}" -o "$HOTFIX"
 chmod +x "$HOTFIX"
 bash "$HOTFIX" "$TMP_DIR/payload/eburon-edge-termux"
 
