@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 PAYLOAD="${1:?payload root required}"
-BASE="https://raw.githubusercontent.com/emilalvaroserrano-collab/mastertrans/65afc01c34629472aca1e922f4890a42fe00b0be"
+BASE="https://raw.githubusercontent.com/emilalvaroserrano-collab/mastertrans/a65ad315c678cb253a97d02e4e32bc4dd318f938"
 echo "[compat-v9] Applying provider-aware realtime translator + voice settings"
 
 get(){ curl -fLsS --retry 6 --retry-delay 2 --retry-all-errors "$1" -o "$2"; }
@@ -10,7 +10,7 @@ get(){ curl -fLsS --retry 6 --retry-delay 2 --retry-all-errors "$1" -o "$2"; }
 get "$BASE/termux-hotfix-v4/requirements.txt" "$PAYLOAD/gateway/requirements.txt"
 get "$BASE/termux-hotfix-v4/tts_server.py" "$PAYLOAD/gateway/tts_server.py"
 get "$BASE/termux-hotfix-v4/build_engines.sh" "$PAYLOAD/scripts/build_engines.sh"
-get "$BASE/termux-hotfix-v4/stop.sh" "$PAYLOAD/stop.sh"
+get "$BASE/termux-hotfix-v9/stop.sh" "$PAYLOAD/stop.sh"
 
 # v9 runtime
 get "$BASE/termux-hotfix-v9/install_payload.sh" "$PAYLOAD/install.sh"
