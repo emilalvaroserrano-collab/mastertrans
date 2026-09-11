@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 PAYLOAD="${1:?payload root required}"
-BASE="https://raw.githubusercontent.com/emilalvaroserrano-collab/mastertrans/743380182b99c8b9fcf6e6ff953918ca475379f4"
+BASE="https://raw.githubusercontent.com/emilalvaroserrano-collab/mastertrans/65afc01c34629472aca1e922f4890a42fe00b0be"
 echo "[compat-v9] Applying provider-aware realtime translator + voice settings"
 
 get(){ curl -fLsS --retry 6 --retry-delay 2 --retry-all-errors "$1" -o "$2"; }
