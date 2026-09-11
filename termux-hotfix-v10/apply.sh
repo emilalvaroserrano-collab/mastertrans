@@ -1,14 +1,14 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 PAYLOAD="${1:?payload root required}"
-BASE="https://raw.githubusercontent.com/emilalvaroserrano-collab/mastertrans/e30c2cbd8ceeae186b641538afd7c3fa3c7e45a4"
+BASE="https://raw.githubusercontent.com/emilalvaroserrano-collab/mastertrans/1ffba55db28404888c18c221a1e1ccc693578590"
 echo "[compat-v10] Applying low-latency translation-only runtime — no Qwen / no chat LLM"
 
 get(){ curl -fLsS --retry 6 --retry-delay 2 --retry-all-errors "$1" -o "$2"; }
 
 # Core runtime
 get "$BASE/termux-hotfix-v4/requirements.txt" "$PAYLOAD/gateway/requirements.txt"
-get "$BASE/termux-hotfix-v4/tts_server.py" "$PAYLOAD/gateway/tts_server.py"
+get "$BASE/termux-hotfix-v10/tts_server.py" "$PAYLOAD/gateway/tts_server.py"
 get "$BASE/termux-hotfix-v9/piper_server.py" "$PAYLOAD/gateway/piper_server.py"
 get "$BASE/termux-hotfix-v9/kokoro_server.mjs" "$PAYLOAD/gateway/kokoro_server.mjs"
 
