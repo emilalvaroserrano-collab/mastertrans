@@ -1,7 +1,7 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 PAYLOAD="${1:?payload root required}"
-BASE="https://raw.githubusercontent.com/emilalvaroserrano-collab/mastertrans/1ffba55db28404888c18c221a1e1ccc693578590"
+BASE="https://raw.githubusercontent.com/emilalvaroserrano-collab/mastertrans/a027323da56d69a06058e62ce214232114b5550c"
 echo "[compat-v10] Applying low-latency translation-only runtime — no Qwen / no chat LLM"
 
 get(){ curl -fLsS --retry 6 --retry-delay 2 --retry-all-errors "$1" -o "$2"; }
