@@ -2,7 +2,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
-import { env, pipeline } from "@huggingface/transformers";
+import { env, pipeline } from "./node_modules/@huggingface/transformers/dist/transformers.web.js";
 
 const PORT=Number(process.env.EBURON_TRANSLATOR_PORT||8851);
 const MODEL=process.env.EBURON_TRANSLATOR_MODEL||"huggingworld/m2m100_418M";
