@@ -43,17 +43,19 @@ blue '[2/8] Local STT model'
 blue '[3/8] Translation-only engine (M2M100 INT8/Q8)'
 mkdir -p "$ROOT/translator-server" "$ROOT/models/m2m100-cache"
 cp "$ROOT/gateway/translator_server.mjs" "$ROOT/translator-server/server.mjs"
-cat >"$ROOT/translator-server/package.json" <<'JSON'
-{"type":"module","private":true,"dependencies":{"@huggingface/transformers":"4.2.0"}}
-JSON
-if ! (cd "$ROOT/translator-server" && npm install --force --ignore-scripts --omit=optional --no-audit --no-fund) >"$ROOT/logs/translator-install.log" 2>&1; then
-  red 'Transformers.js install failed. Last log lines:'
-  tail -n 60 "$ROOT/logs/translator-install.log" || true
-  exit 1
+mkdir -p "$ROOT/translator-server/vendor"
+TF_TGZ="$ROOT/logs/transformers-4.2.0.tgz"
+TF_VENDOR="$ROOT/translator-server/vendor/transformers"
+if [ ! -s "$TF_VENDOR/dist/transformers.js" ]; then
+  rm -rf "$TF_VENDOR" "$ROOT/translator-server/vendor/package"
+  curl -fLsS --retry 6 --retry-delay 2 --retry-all-errors     "https://registry.npmjs.org/@huggingface/transformers/-/transformers-4.2.0.tgz" -o "$TF_TGZ"
+  tar -xzf "$TF_TGZ" -C "$ROOT/translator-server/vendor"
+  mv "$ROOT/translator-server/vendor/package" "$TF_VENDOR"
 fi
-echo '  ✓ Transformers.js web/WASM runtime installed'
+[ -s "$TF_VENDOR/dist/transformers.js" ] || { red 'Transformers.js self-contained web bundle missing'; exit 1; }
+echo '  ✓ Transformers.js self-contained web/WASM bundle installed (no onnxruntime-node)'
 if (cd "$ROOT/translator-server" && EBURON_TRANSLATOR_CACHE="$ROOT/models/m2m100-cache" EBURON_OFFLINE=0 timeout 420 node --input-type=module <<'JS'
-import { env, pipeline } from "./node_modules/@huggingface/transformers/dist/transformers.web.js";
+import { env, pipeline } from "./vendor/transformers/dist/transformers.js";
 import path from "node:path";
 env.cacheDir=process.env.EBURON_TRANSLATOR_CACHE;
 env.allowLocalModels=true;
